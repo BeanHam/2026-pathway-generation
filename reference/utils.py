@@ -189,7 +189,7 @@ class IterativeEncoder:
 # ==========================================
 # Train Each Graph
 # ==========================================
-def process_graph_batch(folder_idx,
+def process_graph(folder_idx,
     model,
     encoder,
     CONFIG,
@@ -208,6 +208,12 @@ def process_graph_batch(folder_idx,
         remaining neighbor action until STOP.
     """
     
+    
+    assert criterion is not None, "criterion must be passed (e.g., nn.CrossEntropyLoss())"
+    assert mean is not None and std is not None, "mean/std must be passed"
+    if mode == "train":
+        assert optimizer is not None and scaler is not None
+
     # --- Load Data ---
     path = os.path.join(CONFIG["data_root"], str(folder_idx))
     try:
@@ -227,7 +233,6 @@ def process_graph_batch(folder_idx,
 
     all_nodes = list(G.nodes)
     start_node = random.choice(all_nodes)
-    # stack holds: (u_node_gt, u_pos_drifted)
     stack = [(start_node, start_node)]
     queued_nodes.add(start_node)
 
@@ -319,6 +324,12 @@ def process_graph_batch(folder_idx,
                 generated_edges.add(frozenset({u_node, v_node}))
                 remaining_set.remove(v_node)
             
+                # --- PUSH NEIGHBOR FOR FUTURE EXPANSION (restores traversal) ---
+                if v_node not in expanded_nodes and v_node not in queued_nodes:
+                    # keep child position anchored at GT node; noise applied when node is popped
+                    stack.append((v_node, v_node))
+                    queued_nodes.add(v_node)
+    
             # --- Node-level backward / logging ---
             node_loss = torch.stack(step_losses).mean()
             if mode == "train":

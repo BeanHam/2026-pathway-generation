@@ -80,7 +80,7 @@ if __name__ == "__main__":
         train_loss = 0.0
         pbar = tqdm(train_indices, desc="Training")
         for i, idx in enumerate(pbar, start=1):            
-            l_train = process_graph_batch(
+            l_train = process_graph(
                 idx,
                 model, 
                 encoder, 
@@ -104,7 +104,7 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     val_loss = 0.0
                     for v_idx in val_indices:
-                        l_val = process_graph_batch(
+                        l_val = process_graph(
                             v_idx,
                             model,
                             encoder,
