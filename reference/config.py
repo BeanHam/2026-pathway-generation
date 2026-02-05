@@ -8,21 +8,19 @@ CONFIG = {
     # Model Params
     'model':                  "resnet18",
     'num_angles':             36,
-    'num_dists':              10,
+    'num_dists':              10,        
     'stop_class_idx':         360,
     'total_classes':          361,
-    'val_every':              200,
     
     # Data Gen Parameters
-    'noise':                  0.02,        
+    'noise':                  0.02,
     'crop_size':              0.5,
-    'output_size':            (256, 256),  
+    'output_size':            (256, 256),
     'max_steps':              200,
     
     # Training Hyperparams
     'num_epochs':             100,
-    'accum_nodes':            16,          
-    'lr':                     1e-4,        
-    'weight_decay':           1e-4,        
-    'grad_clip':              1.0,         
+    'lr':                     1e-4,
+    'weight_decay':           1e-4,
+    'grad_clip':              1.0,
 }

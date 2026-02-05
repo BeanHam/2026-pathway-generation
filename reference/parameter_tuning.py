@@ -113,7 +113,6 @@ def infer_one_graph_unconstrained(
     path = os.path.join(CONFIG["data_root"], str(folder_idx))
     with open(os.path.join(path, "graph.pickle"), "rb") as f:
         G_gt = pickle.load(f)
-    # sat = np.array(Image.open(os.path.join(path, "satellite.png")).convert("RGB"))
     sat = np.array(Image.open(os.path.join(path, "satellite_resized.png")).convert("RGB"))
     H, W = sat.shape[:2]
 
@@ -579,20 +578,19 @@ def tune_inference_hparams(
 if __name__ == "__main__":
     
     logs = [
-        # '/data/models/bin/reference_logs/resnet18_20260105_201712/',                          # old model
-        '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260203_210148/',  # new model
+        '/data/models/bin/reference_logs/resnet18_20260105_201712/',
+        '/data/models/bin/reference_logs/resnet50_20260115_132128/',
+        '/data/models/bin/reference_logs/convnext_tiny_20260115_132212/',
+        '/data/models/bin/reference_logs/swin_tiny_20260115_132240/',
+        '/data/models/bin/reference_logs/vit_small_20260115_140330/',
+        '/data/models/bin/reference_logs/roadtracer_20260105_201818/',
     ]
-        
-    path = "/data/aiclinic/pathways/generation/"
-    with open(path+"val.txt", "r") as f:
+    with open("/data/aiclinic/pathways/generation/val.txt", "r") as f:
         val_indices = [line.strip() for line in f]
     
     for i, log in enumerate(logs):
         with open(log+'run_config.json', 'r') as f:
-            config = json.load(f)                    
-        
-        config['data_root']= path+"pairs/"
-        
+            config = json.load(f)
         encoder = IterativeEncoder(config)
         model = PathwayModel(num_classes=config['total_classes'], backbone_name=config["model"]).to(config['device'])
         model.load_state_dict(torch.load(log+"model_best.pth", map_location=config["device"]))
@@ -607,12 +605,12 @@ if __name__ == "__main__":
             buffer_radius=0.01,
             rng_seed=0,
             restarts_grid=(1, 5),
-            topk_grid=(5, 10),
-            stop_prob_grid=(0.4, 0.5, 0.6, 0.7),
+            topk_grid=(1, 5, 10),
+            stop_prob_grid=(0.3, 0.4, 0.5, 0.6),
             max_expand_grid=(4, 8, 12),
-            max_graphs=200,
+            max_graphs=50,
             mode="grid",
             verbose=True,
         )
-        # with open(log+'inference_config.json', 'w') as f:
-        #     json.dump(best_cfg, f, indent=4)        
+        with open(log+'inference_config.json', 'w') as f:
+            json.dump(best_cfg, f, indent=4)        

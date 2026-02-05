@@ -6,16 +6,16 @@ import random
 import numpy as np
 import torch.nn as nn
 
-from PIL import Image
-from functools import lru_cache
-from torch.amp import autocast
 from config import *
+from functools import lru_cache
 
 @lru_cache(maxsize=256)
 def _load_graph_and_image(path):
     with open(os.path.join(path, "graph.pickle"), "rb") as f:
         G = pickle.load(f)
     img_bgr = cv2.imread(os.path.join(path, "satellite.png"), cv2.IMREAD_COLOR)
+    if img_bgr is None:
+        raise FileNotFoundError(os.path.join(path, "satellite.png"))
     satellite_img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     return G, satellite_img
 
@@ -43,45 +43,6 @@ def set_seed(seed: int):
 # Cropping Image
 # ==========================================
 def crop_image(img_arr, center, crop_size=0.5, output_size=(256, 256)):
-    """
-    Crops image (H, W, C) around center (x, y). 
-    Assumes img_arr is SQUARE (H=W) to maintain aspect ratio consistency.
-    """
-    H, W = img_arr.shape[:2]
-    cx_norm, cy_norm = center
-    
-    # 1. Convert Center to Pixels (WITH Y-INVERSION)
-    # Geospatial (0,0) is Bottom-Left. Image (0,0) is Top-Left.
-    px_cx = int(cx_norm * W)
-    px_cy = int((1 - cy_norm) * H)
-    
-    # 2. Calculate Radius (half of the crop window)
-    # Since W=H, this covers the same normalized distance in X and Y.
-    # crop_size 0.5 -> covers 0.5 normalized units (0.25 radius).
-    # This guarantees 'dist_max=0.2' is visible.
-    px_half = int((crop_size * W) / 2)
-    
-    x1, y1 = px_cx - px_half, px_cy - px_half
-    x2, y2 = px_cx + px_half, px_cy + px_half
-    
-    # 3. Padding Logic (Handle boundaries)
-    pad_l, pad_t = max(0, -x1), max(0, -y1)
-    pad_r, pad_b = max(0, x2 - W), max(0, y2 - H)
-    
-    x1_v, y1_v = max(0, x1), max(0, y1)
-    x2_v, y2_v = min(W, x2), min(H, y2)
-    
-    valid_crop = img_arr[y1_v:y2_v, x1_v:x2_v]
-    
-    if pad_l > 0 or pad_t > 0 or pad_r > 0 or pad_b > 0:
-        pads = ((pad_t, pad_b), (pad_l, pad_r))
-        if len(img_arr.shape) == 3: 
-            pads += ((0, 0),) 
-        valid_crop = np.pad(valid_crop, pads, mode='constant', constant_values=0)
-            
-    return cv2.resize(valid_crop, output_size, interpolation=cv2.INTER_LINEAR)
-
-def crop_image_fast(img_arr, center, crop_size=0.5, output_size=(256, 256)):
     """
     Fast crop+pad+resize via cv2.warpAffine.
 
@@ -122,6 +83,7 @@ def crop_image_fast(img_arr, center, crop_size=0.5, output_size=(256, 256)):
     else:
         # For multi-channel, borderValue must match channels; 0 works as scalar too.
         return cv2.warpAffine(img_arr, M, (out_w, out_h), flags=interp, borderMode=border, borderValue=0)
+    
     
 # ==========================================
 # Label Encoder
@@ -189,54 +151,47 @@ class IterativeEncoder:
 # ==========================================
 # Train Each Graph
 # ==========================================
-def process_graph(folder_idx,
+def process_graph_graphloss(
+    folder_idx,
     model,
     encoder,
     CONFIG,
     mode="train",
     criterion=None,
-    optimizer=None,
-    scaler=None,
     teacher_noise=0.0,
     mean=None,
-    std=None
+    std=None,
 ):
     """
-    Teacher-forced graph rollout over GT graph:
-      - global_canvas stores generated edges so far (always GT edges in canonical order).
-      - at each expanded node u (optionally noised position u_pos), we iteratively supervise the next
-        remaining neighbor action until STOP.
+    Returns:
+      - train: torch scalar tensor (graph loss) for backward
+      - val: float graph loss
+    Graph loss = mean(node_losses), node_loss = mean(step_losses)
     """
-    
-    
-    assert criterion is not None, "criterion must be passed (e.g., nn.CrossEntropyLoss())"
-    assert mean is not None and std is not None, "mean/std must be passed"
-    if mode == "train":
-        assert optimizer is not None and scaler is not None
+    assert criterion is not None
+    assert mean is not None and std is not None
 
-    # --- Load Data ---
+    device = CONFIG["device"]
     path = os.path.join(CONFIG["data_root"], str(folder_idx))
-    try:
-        G, satellite_img = _load_graph_and_image(path)
-        H, W = satellite_img.shape[:2]
-    except Exception:
+
+    # In DDP train, we should NOT silently skip; raise so you see the bad idx
+    G, satellite_img = _load_graph_and_image(path)
+    H, W = satellite_img.shape[:2]
+    if len(G.nodes) == 0:
+        if mode == "train":
+            return torch.zeros((), device=device)
         return 0.0
 
-    if len(G.nodes) == 0:
-        return 0.0
-    
-    # --- State ---
-    global_canvas   = np.zeros((H, W), dtype=np.uint8)
-    generated_edges = set()   # edges that are already generated/drawn (drives valid actions + STOP)
-    expanded_nodes  = set()   # nodes whose outgoing edges we already processed
-    queued_nodes    = set()   # nodes already pushed to stack (prevents duplicates)
+    global_canvas = np.zeros((H, W), dtype=np.uint8)
+    generated_edges = set()
+    expanded_nodes = set()
+    queued_nodes = set()
 
     all_nodes = list(G.nodes)
     start_node = random.choice(all_nodes)
     stack = [(start_node, start_node)]
     queued_nodes.add(start_node)
 
-    # --- Torch setup ---
     if mode == "train":
         model.train()
         if should_freeze_bn(CONFIG["model"]):
@@ -244,15 +199,12 @@ def process_graph(folder_idx,
     else:
         model.eval()
 
-    device = CONFIG["device"]
-    accum_nodes = CONFIG["accum_nodes"]
-    node_counter = 0
-    total_loss = 0.0
+    node_losses = []
     num_expanded = 0
-    
+    max_steps = int(CONFIG["max_steps"])
+
     with torch.set_grad_enabled(mode == "train"):
-        while num_expanded < CONFIG["max_steps"]:
-            # If stack empties but we still want to cover the whole graph, restart from an unexpanded node.
+        while num_expanded < max_steps:
             if not stack:
                 remaining = [n for n in G.nodes if n not in expanded_nodes]
                 if not remaining:
@@ -264,107 +216,69 @@ def process_graph(folder_idx,
             u_node, u_pos = stack.pop()
             if teacher_noise > 0 and mode == "train":
                 u_pos = apply_noise(u_node, scale=teacher_noise)
+
             if u_node in expanded_nodes:
                 continue
+
             expanded_nodes.add(u_node)
             num_expanded += 1
 
-            # --- FIND & SORT NEIGHBORS (CANONICAL) ---
-            # Remaining GT neighbors (edges not generated yet)
             neighbors = list(G.neighbors(u_node))
             remaining_neighbors = [n for n in neighbors if frozenset({u_node, n}) not in generated_edges]
             canon = sorted(
                 remaining_neighbors,
                 key=lambda n: (encoder.get_action_label(u_node, n), float(n[0]), float(n[1])),
             )
-            
-            # Crop around DRIFTED pos
-            px_u = (int(u_pos[0]*W), int((1-u_pos[1])*H)) 
+
+            px_u = (int(u_pos[0] * W), int((1 - u_pos[1]) * H))
             step_losses = []
             remaining_set = set(canon)
-                        
-            while True:
-                # Expert action at this state:
-                if not remaining_set:
-                    expert_target = "STOP"
-                    expert_label = CONFIG["stop_class_idx"]
-                else:
-                    # canonical smallest among remaining
-                    expert_target = next(n for n in canon if n in remaining_set)                    
-                    expert_label = encoder.get_action_label(u_pos, expert_target)
 
-                # --- Build input from CURRENT canvas state ---
-                # (dot is not persistent; only in input)
-                can_crop = crop_image_fast(global_canvas, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
+            while True:
+                if not remaining_set:
+                    expert_target = None
+                    expert_label = int(CONFIG["stop_class_idx"])
+                else:
+                    expert_target = next(n for n in canon if n in remaining_set)
+                    expert_label = int(encoder.get_action_label(u_pos, expert_target))
+
+                can_crop = crop_image(global_canvas, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
                 ch, cw = can_crop.shape[:2]
                 cv2.circle(can_crop, (cw//2, ch//2), radius=10, color=255, thickness=-1, lineType=cv2.LINE_AA)
-                sat_crop = crop_image_fast(satellite_img, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
-                
-                
-                inp = np.concatenate([sat_crop, can_crop[..., None]], axis=2)  # (H,W,4)
-                x = torch.from_numpy(inp).permute(2, 0, 1).float().unsqueeze(0) / 255.0  # (1,4,256,256)
+                sat_crop = crop_image(satellite_img, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
+
+                inp = np.concatenate([sat_crop, can_crop[..., None]], axis=2)
+                x = torch.from_numpy(inp).permute(2, 0, 1).float().unsqueeze(0) / 255.0
                 x = x.to(device)
                 x = (x - mean) / std
                 y = torch.tensor([expert_label], device=device, dtype=torch.long)
-                
-                with autocast(device_type="cuda", enabled=device.startswith("cuda")):    
-                    logits = model(x)  # (1,361)
-                    loss_step = criterion(logits, y)                
-                    step_losses.append(loss_step)
 
-                # STOP ends the per-node sequence
-                if expert_target == "STOP":
+                logits = model(x)
+                loss_step = criterion(logits, y)
+                step_losses.append(loss_step)
+
+                if expert_target is None:
                     break
-                
-                # --- Apply generation update (teacher-forced GT edge) ---
+
                 v_node = expert_target
                 px_v = (int(v_node[0] * W), int((1 - v_node[1]) * H))
                 cv2.line(global_canvas, px_u, px_v, color=255, thickness=2, lineType=cv2.LINE_AA)
 
                 generated_edges.add(frozenset({u_node, v_node}))
                 remaining_set.remove(v_node)
-            
-                # --- PUSH NEIGHBOR FOR FUTURE EXPANSION (restores traversal) ---
+
                 if v_node not in expanded_nodes and v_node not in queued_nodes:
-                    # keep child position anchored at GT node; noise applied when node is popped
                     stack.append((v_node, v_node))
                     queued_nodes.add(v_node)
-    
-            # --- Node-level backward / logging ---
-            node_loss = torch.stack(step_losses).mean()
-            if mode == "train":
-                node_counter += 1
-                loss_to_backprop = node_loss / accum_nodes
-                use_amp = (scaler is not None) and device.startswith("cuda")
-                if use_amp:
-                    scaler.scale(loss_to_backprop).backward()
-                else:
-                    loss_to_backprop.backward()
 
-                if node_counter % accum_nodes == 0:
-                    if use_amp:
-                        scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=CONFIG["grad_clip"])
-                    if use_amp:
-                        scaler.step(optimizer)
-                        scaler.update()
-                    else:
-                        optimizer.step()
-                    optimizer.zero_grad(set_to_none=True)
-                    
-            total_loss += float(node_loss.detach().item())
-        
-        # Flush remaining grads
-        if mode == "train" and node_counter % accum_nodes != 0:
-            use_amp = (scaler is not None) and device.startswith("cuda")
-            if use_amp:
-                scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=CONFIG["grad_clip"])
-            if use_amp:
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
+            node_losses.append(torch.stack(step_losses).mean())
 
-    return total_loss / max(num_expanded, 1)
+    if not node_losses:
+        if mode == "train":
+            return torch.zeros((), device=device)
+        return 0.0
+
+    graph_loss = torch.stack(node_losses).mean()
+    if mode == "train":
+        return graph_loss
+    return float(graph_loss.detach().item())
