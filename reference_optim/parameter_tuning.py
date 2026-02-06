@@ -14,7 +14,7 @@ from tqdm import tqdm
 from copy import deepcopy
 from shapely.ops import unary_union
 from shapely.geometry import LineString
-from utils import *
+from utils_ddp import *
 from model import *
 
 # ----------------------------
