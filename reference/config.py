@@ -20,6 +20,7 @@ CONFIG = {
     
     # Training Hyperparams
     'num_epochs':             100,
+    'accum_nodes':            16,
     'lr':                     1e-4,
     'weight_decay':           1e-4,
     'grad_clip':              1.0,

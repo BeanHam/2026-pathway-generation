@@ -579,11 +579,6 @@ if __name__ == "__main__":
     
     logs = [
         '/data/models/bin/reference_logs/resnet18_20260105_201712/',
-        '/data/models/bin/reference_logs/resnet50_20260115_132128/',
-        '/data/models/bin/reference_logs/convnext_tiny_20260115_132212/',
-        '/data/models/bin/reference_logs/swin_tiny_20260115_132240/',
-        '/data/models/bin/reference_logs/vit_small_20260115_140330/',
-        '/data/models/bin/reference_logs/roadtracer_20260105_201818/',
     ]
     with open("/data/aiclinic/pathways/generation/val.txt", "r") as f:
         val_indices = [line.strip() for line in f]
