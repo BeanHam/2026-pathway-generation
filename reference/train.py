@@ -56,7 +56,7 @@ if __name__ == "__main__":
     model  = PathwayModel(num_classes=CONFIG['total_classes'], backbone_name=CONFIG["model"]).to(CONFIG['device'])
     if should_freeze_bn(CONFIG["model"]):
         model.apply(freeze_bn)
-        
+                
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=CONFIG['lr'], weight_decay=CONFIG['weight_decay'])
     encoder   = IterativeEncoder(CONFIG)
@@ -132,5 +132,5 @@ if __name__ == "__main__":
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), os.path.join(run_dir, "model_best.pth"))
             print("  [+] New Best Model! Saved.")
-                                                    
+                                                                
     print("\nTraining Complete.")

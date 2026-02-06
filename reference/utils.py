@@ -4,8 +4,6 @@ import torch
 import pickle
 import random
 import numpy as np
-
-from config import *
 from functools import lru_cache
 
 @lru_cache(maxsize=256)
@@ -43,45 +41,42 @@ def set_seed(seed: int):
 # ==========================================
 def crop_image(img_arr, center, crop_size=0.5, output_size=(256, 256)):
     """
-    Fast crop+pad+resize via cv2.warpAffine.
-
-    img_arr: (H,W) or (H,W,C) numpy array
-    center: (cx_norm, cy_norm) in [0,1] geospatial (origin bottom-left)
-    crop_size: normalized size of crop window relative to full image width (assumes square-ish semantics)
-    output_size: (out_w, out_h) or (out_h, out_w) ???  -> we'll follow your existing: (H,W) tuple
-                 Your code uses output_size=(256,256) and cv2.resize expects (w,h).
-                 We'll accept (H,W) like your existing and convert for OpenCV.
+    Crops image (H, W, C) around center (x, y). 
+    Assumes img_arr is SQUARE (H=W) to maintain aspect ratio consistency.
     """
     H, W = img_arr.shape[:2]
     cx_norm, cy_norm = center
-
-    # pixel center in image coordinates (origin top-left)
-    cx = cx_norm * W
-    cy = (1.0 - cy_norm) * H
-
-    # half-width in pixels of the crop in source image
-    half = (crop_size * W) / 2.0  # using W for consistency with your prior comment
-
-    out_h, out_w = output_size  # your code treats output_size as (H,W)
-    sx = out_w / (2.0 * half)
-    sy = out_h / (2.0 * half)
-
-    # Map source -> dest:
-    # dest center (out_w/2, out_h/2) corresponds to source (cx, cy)
-    # scaling maps +/-half in source to +/-out/2 in dest
-    M = np.array([
-        [sx, 0.0, (out_w / 2.0) - sx * cx],
-        [0.0, sy, (out_h / 2.0) - sy * cy],
-    ], dtype=np.float32)
-
-    interp = cv2.INTER_LINEAR
-    border = cv2.BORDER_CONSTANT
-
-    if img_arr.ndim == 2:
-        return cv2.warpAffine(img_arr, M, (out_w, out_h), flags=interp, borderMode=border, borderValue=0)
-    else:
-        # For multi-channel, borderValue must match channels; 0 works as scalar too.
-        return cv2.warpAffine(img_arr, M, (out_w, out_h), flags=interp, borderMode=border, borderValue=0)
+    
+    # 1. Convert Center to Pixels (WITH Y-INVERSION)
+    # Geospatial (0,0) is Bottom-Left. Image (0,0) is Top-Left.
+    px_cx = int(cx_norm * W)
+    px_cy = int((1 - cy_norm) * H)
+    
+    # 2. Calculate Radius (half of the crop window)
+    # Since W=H, this covers the same normalized distance in X and Y.
+    # crop_size 0.5 -> covers 0.5 normalized units (0.25 radius).
+    # This guarantees 'dist_max=0.2' is visible.
+    px_half = int((crop_size * W) / 2)
+    
+    x1, y1 = px_cx - px_half, px_cy - px_half
+    x2, y2 = px_cx + px_half, px_cy + px_half
+    
+    # 3. Padding Logic (Handle boundaries)
+    pad_l, pad_t = max(0, -x1), max(0, -y1)
+    pad_r, pad_b = max(0, x2 - W), max(0, y2 - H)
+    
+    x1_v, y1_v = max(0, x1), max(0, y1)
+    x2_v, y2_v = min(W, x2), min(H, y2)
+    
+    valid_crop = img_arr[y1_v:y2_v, x1_v:x2_v]
+    
+    if pad_l > 0 or pad_t > 0 or pad_r > 0 or pad_b > 0:
+        pads = ((pad_t, pad_b), (pad_l, pad_r))
+        if len(img_arr.shape) == 3: 
+            pads += ((0, 0),) 
+        valid_crop = np.pad(valid_crop, pads, mode='constant', constant_values=0)
+            
+    return cv2.resize(valid_crop, output_size, interpolation=cv2.INTER_LINEAR)
     
     
 # ==========================================
@@ -174,7 +169,8 @@ def process_graph(folder_idx,
     try:
         G, satellite_img = _load_graph_and_image(path)
         H, W = satellite_img.shape[:2]
-    except Exception:
+    except Exception as e:
+        print(f"[LOAD FAIL] {folder_idx}: {e}", flush=True)
         return 0.0
 
     if len(G.nodes) == 0:
@@ -248,11 +244,11 @@ def process_graph(folder_idx,
                     expert_target = next(n for n in canon if n in remaining_set)
                     expert_label = encoder.get_action_label(u_pos, expert_target)
 
-                # --- Build input from CURRENT canvas state ---
-                can_crop = crop_image(global_canvas, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
-                ch, cw = can_crop.shape[:2]
-                cv2.circle(can_crop, (cw//2, ch//2), radius=10, color=255, thickness=-1, lineType=cv2.LINE_AA)
-                sat_crop = crop_image(satellite_img, u_pos, CONFIG["crop_size"], CONFIG["output_size"])                            
+                # --- Build input from CURRENT canvas state ---                
+                canvas_with_dot = global_canvas.copy()
+                cv2.circle(canvas_with_dot, px_u, radius=10, color=255, thickness=-1, lineType=cv2.LINE_AA)
+                sat_crop = crop_image(satellite_img, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
+                can_crop = crop_image(canvas_with_dot, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
                 
                 inp = np.concatenate([sat_crop, can_crop[..., None]], axis=2)  # (H,W,4)
                 x = torch.from_numpy(inp).permute(2, 0, 1).float().unsqueeze(0) / 255.0  # (1,4,256,256)
