@@ -4,17 +4,15 @@ import json
 import torch
 import pickle
 import random
+import itertools
 import numpy as np
 import pandas as pd
-import geopandas as gpd
 
-import itertools
-from PIL import Image
 from tqdm import tqdm
-from copy import deepcopy
+from functools import lru_cache
 from shapely.ops import unary_union
 from shapely.geometry import LineString
-from utils_ddp import *
+from utils import *
 from model import *
 
 # ----------------------------
@@ -22,9 +20,17 @@ from model import *
 # ----------------------------
 def node_to_px(xy, H, W):
     x, y = xy
-    return (int(x * W), int((1 - y) * H))
+    # clamp to valid pixel indices (avoids x==1.0 -> W)
+    px = int(np.clip(x * (W - 1), 0, W - 1))
+    py = int(np.clip((1 - y) * (H - 1), 0, H - 1))
+    return (px, py)
 
-def build_input_tensor(satellite_img, canvas, u_pos, CONFIG, device):
+def build_norm_tensors(device):
+    mean = torch.tensor([0.485, 0.456, 0.406, 0.0], device=device).view(1, 4, 1, 1)
+    std  = torch.tensor([0.229, 0.224, 0.225, 1.0], device=device).view(1, 4, 1, 1)
+    return mean, std
+
+def build_input_tensor(satellite_img, canvas, u_pos, CONFIG, device, mean, std):
     """Build [1,4,256,256] input exactly like training."""
     H, W = satellite_img.shape[:2]
     px_u = node_to_px(u_pos, H, W)
@@ -35,21 +41,14 @@ def build_input_tensor(satellite_img, canvas, u_pos, CONFIG, device):
     sat_crop = crop_image(satellite_img, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
     can_crop = crop_image(canvas_with_dot, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
 
-    inp = np.concatenate([sat_crop, can_crop[..., None]], axis=2)  # (256,256,4)
+    inp = np.concatenate([sat_crop, can_crop[..., None]], axis=2)  # (H,W,4)
 
     x = torch.from_numpy(inp).permute(2, 0, 1).float().unsqueeze(0) / 255.0
     x = x.to(device)
-
-    mean = torch.tensor([0.485, 0.456, 0.406, 0.0], device=device).view(1, 4, 1, 1)
-    std  = torch.tensor([0.229, 0.224, 0.225, 1.0], device=device).view(1, 4, 1, 1)
     x = (x - mean) / std
     return x
 
 def choose_seed_positions(strategy, satellite_img, num_seeds, rng, gt_graph=None):
-    """
-    Realistic options: "random" or "grid".
-    Debug only: "gt_random" (uses gt_graph).
-    """
     if strategy == "random":
         return [(rng.random(), rng.random()) for _ in range(num_seeds)]
 
@@ -73,47 +72,57 @@ def topk_action_indices(logits_1d, k):
     return torch.topk(logits_1d, k=k, largest=True).indices.tolist()
 
 # ----------------------------
-# 2) Unconstrained inference (deployment-style)
+# Cached loaders (avoid repeated disk IO)
+# ----------------------------
+@lru_cache(maxsize=256)
+def load_gt_graph(data_root: str, idx: str):
+    path = os.path.join(data_root, str(idx))
+    with open(os.path.join(path, "graph.pickle"), "rb") as f:
+        return pickle.load(f)
+
+@lru_cache(maxsize=256)
+def load_sat_rgb(data_root: str, idx: str, sat_name: str = "satellite_resized.png"):
+    path = os.path.join(data_root, str(idx))
+    img_path = os.path.join(path, sat_name)
+    # Use cv2 for speed
+    bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    if bgr is None:
+        raise FileNotFoundError(img_path)
+    return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+def gt_graph_to_edges_xy(G):
+    return [(tuple(u), tuple(v)) for (u, v) in G.edges]
+
+# ----------------------------
+# Inference (same logic, but avoids per-step mean/std creation)
 # ----------------------------
 @torch.no_grad()
-def infer_one_graph_unconstrained(
+def generate_one_graph(
     folder_idx,
     model,
     encoder,
     CONFIG,
     device=None,
-    # seeding
     seed_strategy="gt_random",
     seeds_per_graph=1,
     restarts_per_graph=1,
     topk=5,
     stop_prob_thresh=0.5,
-
-    # fixed params
     stop_fallback_thresh=0.2,
     prevent_repeat_actions=True,
     rng_seed=0,
     max_global_steps=200,
     max_expand_per_node=12,
 ):
-    """
-    Unconstrained rollout (no snapping/min_step):
-      - decoding:
-          * topk=1 => greedy with STOP-veto fallback (matches GRPO greedy):
-              if argmax is STOP but stop_prob < stop_prob_thresh, pick best non-STOP
-          * topk>1 => "first valid among top-k" with STOP gating
-      - restarts: choose best run by confidence (top1-top2 margin sum)
-    Returns:
-      gen = {"nodes_xy": [...], "edges_xy": [...], "edges_ij": [...]}
-    """
     if device is None:
         device = CONFIG["device"]
 
+    mean, std = build_norm_tensors(device)
     rng = random.Random(rng_seed)
-    path = os.path.join(CONFIG["data_root"], str(folder_idx))
-    with open(os.path.join(path, "graph.pickle"), "rb") as f:
-        G_gt = pickle.load(f)
-    sat = np.array(Image.open(os.path.join(path, "satellite_resized.png")).convert("RGB"))
+
+    data_root = CONFIG["data_root"]
+    G_gt = load_gt_graph(data_root, str(folder_idx))
+    sat = load_sat_rgb(data_root, str(folder_idx), sat_name="satellite_resized.png")
     H, W = sat.shape[:2]
 
     model.eval()
@@ -125,13 +134,11 @@ def infer_one_graph_unconstrained(
         nodes_xy = []
         edges_set = set()
         edges_xy = []
-
         stack = []
         expanded = set()
         confidence = 0.0
         steps_used = 0
 
-        # seed nodes (no snapping; just add)
         for p in starts:
             p = (float(np.clip(p[0], 0, 1)), float(np.clip(p[1], 0, 1)))
             nodes_xy.append(p)
@@ -151,19 +158,16 @@ def infer_one_graph_unconstrained(
                 if steps_used >= max_global_steps:
                     break
 
-                x = build_input_tensor(sat, canvas, u_pos, CONFIG, device)
-                logits = model(x)[0]  # [361]
+                x = build_input_tensor(sat, canvas, u_pos, CONFIG, device, mean, std)
+                logits = model(x)[0]
                 probs = torch.softmax(logits, dim=0)
                 stop_prob = float(probs[CONFIG["stop_class_idx"]].item())
 
-                # confidence margin (top1-top2 logits)
                 top2 = torch.topk(logits, k=2).values
                 if top2.numel() == 2:
                     confidence += float((top2[0] - top2[1]).item())
 
-                # --- Candidate actions ---
                 if topk == 1:
-                    # greedy with STOP-veto fallback
                     a0 = int(torch.argmax(logits).item())
                     if a0 == CONFIG["stop_class_idx"] and stop_prob < stop_prob_thresh:
                         logits_ns = logits.clone()
@@ -183,7 +187,6 @@ def infer_one_graph_unconstrained(
                     if prevent_repeat_actions and a_idx in used_actions:
                         continue
 
-                    # STOP gating (for topk>1; for topk==1 it's already vetoed above)
                     if a_idx == CONFIG["stop_class_idx"]:
                         if stop_prob >= stop_prob_thresh:
                             chosen_action = a_idx
@@ -207,12 +210,9 @@ def infer_one_graph_unconstrained(
                     chosen_end = new_pos
                     break
 
-                # fallback: stop if nothing valid
                 if chosen_action is None:
-                    if stop_prob >= stop_fallback_thresh:
-                        break
-                    else:
-                        break
+                    # same behavior as your original: stop if nothing valid
+                    break
 
                 if chosen_action == CONFIG["stop_class_idx"]:
                     break
@@ -220,12 +220,10 @@ def infer_one_graph_unconstrained(
                 if prevent_repeat_actions:
                     used_actions.add(chosen_action)
 
-                # commit: always create a new node
                 nodes_xy.append(chosen_end)
                 v_id = len(nodes_xy) - 1
                 stack.append(v_id)
 
-                # add edge
                 e = frozenset({u_id, v_id})
                 if e not in edges_set:
                     edges_set.add(e)
@@ -242,15 +240,9 @@ def infer_one_graph_unconstrained(
             "edges_ij": [tuple(e) for e in edges_set],
             "starts": starts,
         }
-        stats = {
-            "edges": len(edges_xy),
-            "nodes": len(nodes_xy),
-            "confidence": float(confidence),
-            "steps": int(steps_used),
-        }
+        stats = {"confidence": float(confidence)}
         return gen, stats
 
-    # restarts: choose best by confidence
     best_gen = {"nodes_xy": [], "edges_xy": [], "edges_ij": [], "starts": []}
     best_score = -1e18
 
@@ -261,10 +253,14 @@ def infer_one_graph_unconstrained(
         if score > best_score:
             best_score = score
             best_gen = gen
-        
+
     return best_gen
 
-def edges_xy_to_gdf(edges_xy, crs=None):
+# ----------------------------
+# Shapely buffered IoU (IoU only)
+#   - cache GT buffered union per (idx, buffer_radius)
+# ----------------------------
+def edges_xy_to_lines(edges_xy):
     geoms = []
     for (u, v) in edges_xy:
         if u is None or v is None:
@@ -272,130 +268,73 @@ def edges_xy_to_gdf(edges_xy, crs=None):
         if (u[0] == v[0]) and (u[1] == v[1]):
             continue
         geoms.append(LineString([u, v]))
-    return gpd.GeoDataFrame({"geometry": geoms}, crs=crs)
+    return geoms
 
-def gt_graph_to_edges_xy(G):
-    return [(tuple(u), tuple(v)) for (u, v) in G.edges]
+@lru_cache(maxsize=256)
+def gt_buffered_union(data_root: str, idx: str, buffer_radius: float, cap_style: int, join_style: int):
+    G_gt = load_gt_graph(data_root, str(idx))
+    gt_edges_xy = gt_graph_to_edges_xy(G_gt)
+    lines = edges_xy_to_lines(gt_edges_xy)
+    if not lines:
+        return None  # empty
+    bufs = [ln.buffer(buffer_radius, cap_style=cap_style, join_style=join_style) for ln in lines]
+    return unary_union(bufs)
 
-def buffered_overlap_stats(
-    gt_edges_xy,
+def buffered_iou(
+    gt_buf_union,            # cached union geometry (or None)
     pred_edges_xy,
     *,
     buffer_radius=0.01,
     cap_style=2,
-    join_style=2
+    join_style=2,
 ):
-    """
-    Buffered geometry overlap stats:
-      precision = inter_area / pred_area
-      recall    = inter_area / gt_area
-      iou       = inter_area / union_area
+    # pred buffered union
+    pred_lines = edges_xy_to_lines(pred_edges_xy)
+    if not pred_lines:
+        return 1.0 if gt_buf_union is None else 0.0
 
-    Added logging fields:
-      - gt_edges, pred_edges
-      - gt_area, pred_area, inter_area, union_area
-    All areas are in normalized coordinate units^2.
-    """
-    gt_edges = len(gt_edges_xy)
-    pred_edges = len(pred_edges_xy)
+    pred_bufs = [ln.buffer(buffer_radius, cap_style=cap_style, join_style=join_style) for ln in pred_lines]
+    pr_union = unary_union(pred_bufs)
 
-    gt_gdf = edges_xy_to_gdf(gt_edges_xy)
-    pr_gdf = edges_xy_to_gdf(pred_edges_xy)
+    if gt_buf_union is None:
+        return 0.0
 
-    # Both empty
-    if len(gt_gdf) == 0 and len(pr_gdf) == 0:
-        return {
-            "iou": 1.0, "precision": 1.0, "recall": 1.0,
-            "gt_edges": gt_edges, "pred_edges": pred_edges,
-            "gt_area": 0.0, "pred_area": 0.0, "inter_area": 0.0, "union_area": 0.0
-        }
+    inter_area = float(gt_buf_union.intersection(pr_union).area)
+    union_area = float(gt_buf_union.union(pr_union).area)
+    return float(inter_area / (union_area + 1e-12))
 
-    # GT empty, pred non-empty
-    if len(gt_gdf) == 0:
-        pr_buf = unary_union(pr_gdf.geometry.buffer(buffer_radius, cap_style=cap_style, join_style=join_style))
-        pr_area = float(pr_buf.area)
-        return {
-            "iou": 0.0, "precision": 0.0, "recall": 1.0,
-            "gt_edges": gt_edges, "pred_edges": pred_edges,
-            "gt_area": 0.0, "pred_area": pr_area, "inter_area": 0.0, "union_area": pr_area
-        }
-
-    # Pred empty, GT non-empty
-    if len(pr_gdf) == 0:
-        gt_buf = unary_union(gt_gdf.geometry.buffer(buffer_radius, cap_style=cap_style, join_style=join_style))
-        gt_area = float(gt_buf.area)
-        return {
-            "iou": 0.0, "precision": 1.0, "recall": 0.0,
-            "gt_edges": gt_edges, "pred_edges": pred_edges,
-            "gt_area": gt_area, "pred_area": 0.0, "inter_area": 0.0, "union_area": gt_area
-        }
-
-    # Both non-empty
-    gt_buf = unary_union(gt_gdf.geometry.buffer(buffer_radius, cap_style=cap_style, join_style=join_style))
-    pr_buf = unary_union(pr_gdf.geometry.buffer(buffer_radius, cap_style=cap_style, join_style=join_style))
-
-    inter_area = float(gt_buf.intersection(pr_buf).area)
-    union_area = float(gt_buf.union(pr_buf).area)
-    gt_area = float(gt_buf.area)
-    pred_area = float(pr_buf.area)
-
-    precision = inter_area / (pred_area + 1e-12)
-    recall    = inter_area / (gt_area + 1e-12)
-    iou       = inter_area / (union_area + 1e-12)
-
-    return {
-        "iou": float(iou),
-        "precision": float(precision),
-        "recall": float(recall),
-        "gt_edges": gt_edges,
-        "pred_edges": pred_edges,
-        "gt_area": gt_area,
-        "pred_area": pred_area,
-        "inter_area": inter_area,
-        "union_area": union_area,
-    }
-
+# ----------------------------
+# Eval + tuning (IoU only)
+# ----------------------------
 @torch.no_grad()
-def eval_on_split(
+def eval_iou(
     indices,
     CONFIG,
     model,
     encoder,
-    infer_one_graph_unconstrained,   # your rollout function returning {"edges_xy": ...}
+    generate_one_graph,
     *,
-    # inference hyperparams to sweep
     rng_seed=0,
     buffer_radius=0.01,
+    cap_style=2,
+    join_style=2,
     seed_strategy="grid",
     seeds_per_graph=1,
     restarts_per_graph=3,
     topk=5,
     stop_prob_thresh=0.5,
-    max_expand_per_node=4,    
+    max_expand_per_node=4,
 ):
-    """
-    Returns mean IoU across graphs (buffered geometry IoU).
-    """
-    ious = []
-    recalls = []
-    precisions = []
-    gt_edges = []
-    pred_edges = []
-    gt_area = []
-    pred_area = []
-    inter_area = []
-    union_area = []
-        
-    for idx in tqdm(indices, desc="Eval buffered IoU"):
-        path = os.path.join(CONFIG["data_root"], str(idx))
-        with open(os.path.join(path, "graph.pickle"), "rb") as f:
-            G_gt = pickle.load(f)
+    data_root = CONFIG["data_root"]
+    iou_sum = 0.0
+    n = 0
 
-        gt_edges_xy = gt_graph_to_edges_xy(G_gt)
+    for idx in tqdm(indices, desc="Eval buffered IoU (IoU-only)"):
+        idx = str(idx)
         per_graph_seed = int(rng_seed) + int(idx)
 
-        gen = infer_one_graph_unconstrained(
-            folder_idx=str(idx),
+        gen = generate_one_graph(
+            folder_idx=idx,
             model=model,
             encoder=encoder,
             CONFIG=CONFIG,
@@ -409,78 +348,43 @@ def eval_on_split(
         )
         pred_edges_xy = gen.get("edges_xy", [])
 
-        results = buffered_overlap_stats(
-            gt_edges_xy, pred_edges_xy,
-            buffer_radius=buffer_radius
-        ) 
-        ious.append(results['iou'])
-        precisions.append(results['precision'])
-        recalls.append(results['recall'])
-        gt_edges.append(results['gt_edges'])
-        pred_edges.append(results['pred_edges'])
-        gt_area.append(results['gt_area'])
-        pred_area.append(results['pred_area'])
-        inter_area.append(results['inter_area'])
-        union_area.append(results['union_area']) 
-    
-    return {
-        'ious': ious, 
-        'precisions': precisions,
-        'recalls': recalls,
-        'gt_edges': gt_edges,
-        'pred_edges': pred_edges,
-        'gt_area': gt_area,
-        'pred_area': pred_area,
-        'inter_area': inter_area,
-        'union_area': union_area,
-        'mean_iou': float(np.mean(ious)) if len(ious) else 0.0,
-        'mean_precision': float(np.mean(precisions)) if len(precisions) else 0.0,
-        'mean_recall': float(np.mean(recalls)) if len(recalls) else 0.0,
-        'mean_gt_edges': float(np.mean(gt_edges)) if len(gt_edges) else 0.0,
-        'mean_pred_edges': float(np.mean(pred_edges)) if len(pred_edges) else 0.0,
-        'mean_gt_area': float(np.mean(gt_area)) if len(gt_area) else 0.0,
-        'mean_pred_area': float(np.mean(pred_area)) if len(pred_area) else 0.0,
-        'mean_inter_area': float(np.mean(inter_area)) if len(inter_area) else 0.0,
-        'mean_union_area': float(np.mean(union_area)) if len(union_area) else 0.0,
-    }
+        gt_union = gt_buffered_union(data_root, idx, float(buffer_radius), int(cap_style), int(join_style))
+        iou = buffered_iou(
+            gt_union,
+            pred_edges_xy,
+            buffer_radius=buffer_radius,
+            cap_style=cap_style,
+            join_style=join_style,
+        )
+
+        iou_sum += float(iou)
+        n += 1
+
+    return {"mean_iou": float(iou_sum / max(n, 1))}
 
 def tune_inference_hparams(
     val_indices,
     CONFIG,
     model,
     encoder,
-    infer_one_graph_unconstrained,
+    generate_one_graph,
     *,
-    # fixed eval settings
     seed_strategy="gt_random",
     seeds_per_graph=1,
     buffer_radius=0.01,
+    cap_style=2,
+    join_style=2,
     rng_seed=0,
-
-    # sweep ranges (edit these)
     restarts_grid=(1, 5),
     topk_grid=(1, 5, 10),
     stop_prob_grid=(0.3, 0.4, 0.5, 0.6),
     max_expand_grid=(4, 8, 12),
-
-    # speed controls
-    max_graphs=None,          # e.g. 50 for quick tuning; None = full val
-    random_subset_seed=123,   # stable subset
-    mode="grid",              # "grid" or "random"
-    random_trials=25,         # if mode="random"
-
-    # selection
-    metric="mean_iou",        # could also use "mean_f1" if you compute it
+    max_graphs=None,
+    random_subset_seed=123,
+    mode="grid",
+    random_trials=25,
     verbose=True,
 ):
-    """
-    Returns:
-      best_cfg: dict
-      best_metrics: dict (output of eval_on_split)
-      results_df: pandas DataFrame with one row per trial
-    """
-
-    # --- choose subset of graphs for speed if requested ---
     indices = list(val_indices)
     if max_graphs is not None and max_graphs < len(indices):
         rs = np.random.RandomState(random_subset_seed)
@@ -488,18 +392,18 @@ def tune_inference_hparams(
         if verbose:
             print(f"[tune] Using subset: {len(indices)}/{len(val_indices)} graphs")
 
-    # --- build candidate list ---
     if mode == "grid":
         candidates = list(itertools.product(restarts_grid, topk_grid, stop_prob_grid, max_expand_grid))
     elif mode == "random":
         rs = np.random.RandomState(random_subset_seed)
         candidates = []
         for _ in range(int(random_trials)):
-            r = int(rs.choice(restarts_grid))
-            k = int(rs.choice(topk_grid))
-            s = float(rs.choice(stop_prob_grid))
-            m = int(rs.choice(max_expand_grid))
-            candidates.append((r, k, s, m))
+            candidates.append((
+                int(rs.choice(restarts_grid)),
+                int(rs.choice(topk_grid)),
+                float(rs.choice(stop_prob_grid)),
+                int(rs.choice(max_expand_grid)),
+            ))
     else:
         raise ValueError("mode must be 'grid' or 'random'")
 
@@ -512,13 +416,12 @@ def tune_inference_hparams(
     best_metrics = None
 
     for t_idx, (restarts_per_graph, topk, stop_prob_thresh, max_expand_per_node) in enumerate(candidates, 1):
-        # Run eval
-        metrics_out = eval_on_split(
+        metrics_out = eval_iou(
             indices=indices,
             CONFIG=CONFIG,
             model=model,
             encoder=encoder,
-            infer_one_graph_unconstrained=infer_one_graph_unconstrained,
+            generate_one_graph=generate_one_graph,
             seed_strategy=seed_strategy,
             seeds_per_graph=seeds_per_graph,
             restarts_per_graph=restarts_per_graph,
@@ -526,30 +429,23 @@ def tune_inference_hparams(
             stop_prob_thresh=stop_prob_thresh,
             rng_seed=rng_seed,
             buffer_radius=buffer_radius,
+            cap_style=cap_style,
+            join_style=join_style,
             max_expand_per_node=max_expand_per_node,
         )
+        mean_iou = float(metrics_out["mean_iou"])
 
-        score = float(metrics_out.get(metric, 0.0))
-
-        row = {
+        rows.append({
             "trial": t_idx,
             "restarts_per_graph": restarts_per_graph,
             "topk": topk,
             "stop_prob_thresh": stop_prob_thresh,
             "max_expand_per_node": max_expand_per_node,
-            "mean_iou": float(metrics_out.get("mean_iou", 0.0)),
-            "mean_precision": float(metrics_out.get("mean_precision", 0.0)),
-            "mean_recall": float(metrics_out.get("mean_recall", 0.0)),
-            "mean_pred_edges": float(metrics_out.get("mean_pred_edges", 0.0)),
-            "mean_gt_edges": float(metrics_out.get("mean_gt_edges", 0.0)),
-        }
-        rows.append(row)
+            "mean_iou": mean_iou,
+        })
 
-        # best tracking (tie-breakers: higher recall, then precision)
-        if (score > best_score) or (
-            abs(score - best_score) < 1e-12 and row["mean_recall"] > (best_metrics.get("mean_recall", -1.0) if best_metrics else -1.0)
-        ):
-            best_score = score
+        if mean_iou > best_score:
+            best_score = mean_iou
             best_cfg = {
                 "seed_strategy": seed_strategy,
                 "seeds_per_graph": seeds_per_graph,
@@ -558,21 +454,22 @@ def tune_inference_hparams(
                 "stop_prob_thresh": stop_prob_thresh,
                 "max_expand_per_node": max_expand_per_node,
                 "buffer_radius": buffer_radius,
+                "cap_style": cap_style,
+                "join_style": join_style,
                 "rng_seed": rng_seed,
             }
-            best_metrics = deepcopy(metrics_out)
+            best_metrics = dict(metrics_out)
 
         if verbose:
             print(
                 f"[tune] {t_idx:03d}/{len(candidates)} "
-                f"iou={row['mean_iou']:.4f} "
-                f"p={row['mean_precision']:.4f} r={row['mean_recall']:.4f} "
+                f"iou={mean_iou:.4f} "
                 f"(restarts={restarts_per_graph}, topk={topk}, stop={stop_prob_thresh}, maxexp={max_expand_per_node}) "
-                f"| best_iou={best_cfg and best_metrics['mean_iou']:.4f}"
+                f"| best_iou={best_score:.4f}"
             )
 
-    results_df = pd.DataFrame(rows).sort_values("mean_iou", ascending=False).reset_index(drop=True)
-    return best_cfg, best_metrics, results_df
+    df = pd.DataFrame(rows).sort_values("mean_iou", ascending=False).reset_index(drop=True)
+    return best_cfg, best_metrics, df
 
 
 if __name__ == "__main__":
@@ -594,18 +491,22 @@ if __name__ == "__main__":
             CONFIG=config,
             model=model,
             encoder=encoder,
-            infer_one_graph_unconstrained=infer_one_graph_unconstrained,
+            generate_one_graph=generate_one_graph,
             seed_strategy="gt_random",
             seeds_per_graph=1,
             buffer_radius=0.01,
             rng_seed=0,
-            restarts_grid=(1, 5),
-            topk_grid=(1, 5, 10),
-            stop_prob_grid=(0.3, 0.4, 0.5, 0.6),
-            max_expand_grid=(4, 8, 12),
+            # restarts_grid=(5),
+            # topk_grid=(5,10),
+            # stop_prob_grid=(0.3, 0.5, 0.6),
+            # max_expand_grid=(4, 8),
+            restarts_grid=[1],
+            topk_grid=[5],
+            stop_prob_grid=[0.3],
+            max_expand_grid=[4,8],
             max_graphs=50,
             mode="grid",
             verbose=True,
         )
-        with open(log+'inference_config.json', 'w') as f:
-            json.dump(best_cfg, f, indent=4)        
+        # with open(log+'inference_config.json', 'w') as f:
+        #     json.dump(best_cfg, f, indent=4)
