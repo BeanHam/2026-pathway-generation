@@ -12,7 +12,7 @@ from tqdm import tqdm
 from functools import lru_cache
 from shapely.ops import unary_union
 from shapely.geometry import LineString
-from utils_ddp import *
+from utils import *
 from model import *
 
 # ----------------------------
@@ -81,7 +81,7 @@ def load_gt_graph(data_root: str, idx: str):
         return pickle.load(f)
 
 @lru_cache(maxsize=256)
-def load_sat_rgb(data_root: str, idx: str, sat_name: str = "satellite.png"):
+def load_sat_rgb(data_root: str, idx: str, sat_name: str = "satellite_resized.png"):
     path = os.path.join(data_root, str(idx))
     img_path = os.path.join(path, sat_name)
     # Use cv2 for speed
@@ -122,7 +122,7 @@ def generate_one_graph(
 
     data_root = CONFIG["data_root"]
     G_gt = load_gt_graph(data_root, str(folder_idx))
-    sat = load_sat_rgb(data_root, str(folder_idx), sat_name="satellite.png")
+    sat = load_sat_rgb(data_root, str(folder_idx), sat_name="satellite_resized.png")
     H, W = sat.shape[:2]
 
     model.eval()
@@ -496,13 +496,17 @@ if __name__ == "__main__":
             seeds_per_graph=1,
             buffer_radius=0.01,
             rng_seed=0,
-            restarts_grid=(1,5),
-            topk_grid=(5,10),
-            stop_prob_grid=(0.4, 0.5, 0.6, 0.7),
-            max_expand_grid=(4, 8, 12),
+            # restarts_grid=(5),
+            # topk_grid=(5,10),
+            # stop_prob_grid=(0.3, 0.5, 0.6),
+            # max_expand_grid=(4, 8),
+            restarts_grid=[1],
+            topk_grid=[5],
+            stop_prob_grid=[0.3],
+            max_expand_grid=[4,8],
             max_graphs=50,
             mode="grid",
             verbose=True,
         )
-        with open(log+'inference_config.json', 'w') as f:
-            json.dump(best_cfg, f, indent=4)
+        # with open(log+'inference_config.json', 'w') as f:
+        #     json.dump(best_cfg, f, indent=4)

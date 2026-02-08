@@ -81,7 +81,7 @@ def load_gt_graph(data_root: str, idx: str):
         return pickle.load(f)
 
 @lru_cache(maxsize=256)
-def load_sat_rgb(data_root: str, idx: str, sat_name: str = "satellite_resized.png"):
+def load_sat_rgb(data_root: str, idx: str, sat_name: str = "satellite.png"):
     path = os.path.join(data_root, str(idx))
     img_path = os.path.join(path, sat_name)
     # Use cv2 for speed
@@ -122,7 +122,7 @@ def generate_one_graph(
 
     data_root = CONFIG["data_root"]
     G_gt = load_gt_graph(data_root, str(folder_idx))
-    sat = load_sat_rgb(data_root, str(folder_idx), sat_name="satellite_resized.png")
+    sat = load_sat_rgb(data_root, str(folder_idx), sat_name="satellite.png")
     H, W = sat.shape[:2]
 
     model.eval()
@@ -475,14 +475,15 @@ def tune_inference_hparams(
 if __name__ == "__main__":
     
     logs = [
-        '/data/models/bin/reference_logs/resnet18_20260105_201712/',
+        '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/'
     ]
-    with open("/data/aiclinic/pathways/generation/val.txt", "r") as f:
+    with open("/data/aiclinic/pathways/generation_full_data/val.txt", "r") as f:
         val_indices = [line.strip() for line in f]
     
     for i, log in enumerate(logs):
         with open(log+'run_config.json', 'r') as f:
             config = json.load(f)
+        config['device'] = "cuda:2"
         encoder = IterativeEncoder(config)
         model = PathwayModel(num_classes=config['total_classes'], backbone_name=config["model"]).to(config['device'])
         model.load_state_dict(torch.load(log+"model_best.pth", map_location=config["device"]))
@@ -496,17 +497,13 @@ if __name__ == "__main__":
             seeds_per_graph=1,
             buffer_radius=0.01,
             rng_seed=0,
-            # restarts_grid=(5),
-            # topk_grid=(5,10),
-            # stop_prob_grid=(0.3, 0.5, 0.6),
-            # max_expand_grid=(4, 8),
-            restarts_grid=[1],
-            topk_grid=[5],
-            stop_prob_grid=[0.3],
-            max_expand_grid=[4,8],
-            max_graphs=50,
+            restarts_grid=(1,5),
+            topk_grid=(5,10),
+            stop_prob_grid=(0.4, 0.5, 0.6, 0.7),
+            max_expand_grid=(4, 6, 8),
+            max_graphs=200,
             mode="grid",
             verbose=True,
         )
-        # with open(log+'inference_config.json', 'w') as f:
-        #     json.dump(best_cfg, f, indent=4)
+        with open(log+'inference_config.json', 'w') as f:
+            json.dump(best_cfg, f, indent=4)
