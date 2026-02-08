@@ -36,7 +36,7 @@ if __name__ == "__main__":
     with open(CONFIG['val_index'], 'r') as f:
         val_indices = [line.strip() for line in f]  
                      
-    run_name = f"{CONFIG['model']}_{time.strftime('%Y%m%d_%H%M%S')}"
+    run_name = f"{CONFIG['model']}_{time.strftime('%Y%m%d_%H%M%S')}_cont"
     run_dir = os.path.join(CONFIG['save_path'], run_name)
     loss_path = os.path.join(run_dir, "loss_log.pkl")
     tmp_path = loss_path + ".tmp"
@@ -56,7 +56,17 @@ if __name__ == "__main__":
     model  = PathwayModel(num_classes=CONFIG['total_classes'], backbone_name=CONFIG["model"]).to(CONFIG['device'])
     if should_freeze_bn(CONFIG["model"]):
         model.apply(freeze_bn)
-        
+                
+    # -------------------------------------------------------------
+    # continue training from previous checkpoints (if any)
+    log = '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_20260205_233727/'
+    model.load_state_dict(torch.load(log+"model_best.pth", map_location=CONFIG["device"]))
+    loss = np.load(log+'loss_log.pkl', allow_pickle=True)
+    val = np.stack(loss['val'])
+    val = val[:,2]
+    best_val_loss = np.min(val)
+    # -------------------------------------------------------------
+    
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=CONFIG['lr'], weight_decay=CONFIG['weight_decay'])
     encoder   = IterativeEncoder(CONFIG)
@@ -68,7 +78,6 @@ if __name__ == "__main__":
     # ------------------------
     global_step = 0
     total_epochs = CONFIG['num_epochs']
-    best_val_loss = float('inf')
     history = {'train': [], 'val': []}
     for epoch in range(total_epochs):
         
@@ -132,5 +141,5 @@ if __name__ == "__main__":
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), os.path.join(run_dir, "model_best.pth"))
             print("  [+] New Best Model! Saved.")
-                                                    
+                                                                
     print("\nTraining Complete.")
