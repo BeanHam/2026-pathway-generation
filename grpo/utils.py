@@ -604,7 +604,8 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
         run_dir = obj[0]
 
     best_path = os.path.join(run_dir, "model_best.pth")
-
+    last_path = os.path.join(run_dir, "model_last.pth")
+    
     # models
     policy = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=CONFIG["model"]).to(device)
     ref    = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=CONFIG["model"]).to(device)
@@ -826,6 +827,10 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
 
             with open(os.path.join(run_dir, "history.json"), "w") as f:
                 json.dump(history, f, indent=2)
+
+            # always save last (rank0 only)
+            state = policy.module.state_dict() if _is_ddp(policy) else policy.state_dict()
+            torch.save(state, last_path)
 
             # save best
             if avg_val_iou > best_val_iou:
