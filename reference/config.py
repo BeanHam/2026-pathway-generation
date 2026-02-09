@@ -19,7 +19,7 @@ CONFIG = {
     'max_steps':              200,
     
     # Training Hyperparams
-    'num_epochs':             40,
+    'num_epochs':             30,
     'accum_nodes':            16,
     'lr':                     1e-4,
     'weight_decay':           1e-4,
