@@ -25,7 +25,7 @@ CONFIG = {
     'grad_clip':              1.0,
     'kl_beta':                0.05,
     'graphs_per_epoch':       None,
-    'val_graphs':             50,
+    'val_graphs':             200,
     
     # Sampling Parameters (Fixed)
     'K':                      4,
@@ -39,5 +39,5 @@ CONFIG = {
 }
 
 REFERENCE_DIRS = {
-    "swin_tiny":       "/data/models/bin/reference_logs/swin_tiny_20260115_132240",
+    "swin_tiny":       "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
 }
