@@ -8,12 +8,11 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 import shapely
-import osmnx as ox
 
 from tqdm import tqdm
 from shapely.ops import unary_union
 
-import metrics as M  # your helper functions module
+import metrics as M  # DO NOT MODIFY THIS FILE
 
 warnings.filterwarnings("ignore")
 
@@ -25,7 +24,6 @@ def ensure_dir(p: str):
     os.makedirs(p, exist_ok=True)
 
 def union_geoms(geoms):
-    """Shapely 2 has union_all; otherwise unary_union."""
     geoms = list(geoms)
     if not geoms:
         return None
@@ -39,36 +37,48 @@ def seed_from_dir(run_dir: str) -> int:
         return int(base.split("_")[1])
     raise ValueError(f"Cannot parse seed from directory: {run_dir}")
 
-def read_geojson(path: str):
+def read_geojson(path: str, default_crs: str = "EPSG:4326"):
+    """
+    Read GeoJSON robustly.
+    If CRS is missing, assume EPSG:4326 (lon/lat) for your prediction/GT files.
+    """
     gdf = gpd.read_file(path)
 
-    # Ensure there is an active geometry column
     if "geometry" not in gdf.columns:
-        gdf = gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs=M.PROJ)
-        return gdf
+        return gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs=default_crs)
 
-    # Ensure GeoDataFrame has geometry set
+    if gdf.crs is None:
+        gdf = gdf.set_crs(default_crs, allow_override=True)
+
+    # Ensure geometry active
     try:
         if gdf.geometry.name != "geometry":
             gdf = gdf.set_geometry("geometry")
     except Exception:
-        # if geopandas couldn't interpret geometry, force empty
-        gdf = gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs=M.PROJ)
-        return gdf
-
-    # Ensure CRS is set
-    if gdf.crs is None:
-        gdf = gdf.set_crs(M.PROJ, allow_override=True)
+        return gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs=default_crs)
 
     return gdf
 
-def buffered_union_geom(gdf: gpd.GeoDataFrame):
-    """Union of buffered lines for IoU computation."""
-    if gdf is None or len(gdf) == 0:
+def buffered_union_geom_in_proj(gdf_ll: gpd.GeoDataFrame):
+    """
+    Buffer union in M.PROJ units (meters if epsg:26910).
+    """
+    if gdf_ll is None or len(gdf_ll) == 0:
         return None
-    # buffering can return empty geometries; filter them out
-    bufs = [geom.buffer(M.BUFF_DIS) for geom in gdf.geometry if geom is not None]
-    bufs = [b for b in bufs if (b is not None and not b.is_empty)]
+
+    if gdf_ll.crs is None:
+        gdf_ll = gdf_ll.set_crs("EPSG:4326", allow_override=True)
+
+    gdf = gdf_ll.to_crs(M.PROJ)
+
+    bufs = []
+    for geom in gdf.geometry:
+        if geom is None or geom.is_empty:
+            continue
+        b = geom.buffer(M.BUFF_DIS)
+        if b is not None and not b.is_empty:
+            bufs.append(b)
+
     return union_geoms(bufs)
 
 def buffered_iou_from_unions(gt_buf, pred_buf) -> float:
@@ -82,17 +92,19 @@ def buffered_iou_from_unions(gt_buf, pred_buf) -> float:
 
 
 # ============================
-# One-time GT discovery
+# GT discovery (used only to locate GT files if needed)
 # ============================
 GT_RE = re.compile(r"^(?P<idx>.+)_seed(?P<seed>\d+)_gt\.geojson$")
 
 def build_gt_index(pred_root: str):
     """
-    Build mapping:
-      idx_str -> any GT geojson path
-    We only need one GT file per idx (GT is identical across runs).
+    Build mapping idx_str -> any GT geojson path under pred_root.
+    (Not strictly needed for eval once cache exists, but useful for sanity.)
     """
     gt_map = {}
+    if not os.path.isdir(pred_root):
+        return gt_map
+
     for model_name in os.listdir(pred_root):
         if model_name.startswith("_"):
             continue
@@ -119,92 +131,15 @@ def build_gt_index(pred_root: str):
                     idx = m.group("idx")
                     if idx not in gt_map:
                         gt_map[idx] = os.path.join(run_dir, fn)
-                # early exit if we already found lots; but safe to just continue
+
     return gt_map
 
 
 # ============================
-# Expensive GT cache building
+# Tile measures + aggregation
 # ============================
-def build_tiles_from_gt(gdf_gt: gpd.GeoDataFrame):
-    bbox_poly = M.bounding_box_from_gdf(gdf_gt)
-
-    # osmnx API varies by version
-    if hasattr(ox, "graph_from_polygon"):
-        G_roads = ox.graph_from_polygon(bbox_poly, simplify=True, retain_all=True)
-    else:
-        G_roads = ox.graph.graph_from_polygon(bbox_poly, simplify=True, retain_all=True)
-
-    # Try voronoi; if it fails or returns empty, fall back to 1 tile (the bbox)
-    try:
-        tile_gdf = M.create_voronoi_diagram(G_roads, bbox_poly)
-
-        # Some failures return an object but with no usable geometry
-        if tile_gdf is None or len(tile_gdf) == 0:
-            raise ValueError("Empty voronoi tile_gdf")
-
-        if "geometry" not in tile_gdf.columns:
-            raise ValueError("tile_gdf has no geometry column")
-
-        # Ensure geometry exists and is not entirely empty
-        if tile_gdf.geometry.isna().all() or tile_gdf.geometry.is_empty.all():
-            raise ValueError("tile_gdf geometry empty")
-
-        return tile_gdf
-
-    except Exception as e:
-        # Fallback: one polygon tile = bbox
-        # This keeps evaluation running and still produces graph-level metrics.
-        tile_gdf = gpd.GeoDataFrame({"geometry": [bbox_poly]}, crs=M.PROJ)
-        return tile_gdf
-
-def compute_gt_tile_measures(tile_gdf: gpd.GeoDataFrame, gdf_gt: gpd.GeoDataFrame) -> pd.DataFrame:
-    gt_measures = [M.get_measures_from_polygon(geom, gdf_gt, gdf_gt, "gt") for geom in tile_gdf.geometry]
-    return pd.DataFrame(gt_measures)
-
-def load_or_build_gt_cache_for_idx(idx: str, gt_path: str, cache_dir: str, verbose=False):
-    """
-    Cache per idx:
-      - gdf_gt (projected)
-      - tile_gdf
-      - gt_tile_df
-      - gt_buf
-    """
-    ensure_dir(cache_dir)
-    cache_path = os.path.join(cache_dir, f"{idx}.pkl")
-
-    if os.path.exists(cache_path):
-        with open(cache_path, "rb") as f:
-            return pickle.load(f)
-
-    if verbose:
-        print(f"[cache] building idx={idx} from {gt_path}")
-
-    gdf_gt = read_geojson(gt_path).to_crs(M.PROJ)
-
-    tile_gdf = build_tiles_from_gt(gdf_gt)
-    gt_tile_df = compute_gt_tile_measures(tile_gdf, gdf_gt)
-    gt_buf = buffered_union_geom(gdf_gt)
-
-    cache_obj = {
-        "idx": str(idx),
-        "gdf_gt": gdf_gt,
-        "tile_gdf": tile_gdf,
-        "gt_tile_df": gt_tile_df,
-        "gt_buf": gt_buf,
-    }
-
-    with open(cache_path, "wb") as f:
-        pickle.dump(cache_obj, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-    return cache_obj
-
-
-# ============================
-# Evaluation on predictions
-# ============================
-def compute_pred_tile_measures(tile_gdf: gpd.GeoDataFrame, gdf_pred: gpd.GeoDataFrame, gdf_gt: gpd.GeoDataFrame) -> pd.DataFrame:
-    pred_measures = [M.get_measures_from_polygon(geom, gdf_pred, gdf_gt, "pred") for geom in tile_gdf.geometry]
+def compute_pred_tile_measures(tile_gdf: gpd.GeoDataFrame, gdf_pred_ll: gpd.GeoDataFrame, gdf_gt_ll: gpd.GeoDataFrame) -> pd.DataFrame:
+    pred_measures = [M.get_measures_from_polygon(geom, gdf_pred_ll, gdf_gt_ll, "pred") for geom in tile_gdf.geometry]
     return pd.DataFrame(pred_measures)
 
 def aggregate_metrics(pred_df: pd.DataFrame, gt_df: pd.DataFrame, iou_val: float) -> dict:
@@ -218,24 +153,29 @@ def aggregate_metrics(pred_df: pd.DataFrame, gt_df: pd.DataFrame, iou_val: float
         "traversability_similarity": float(M.compute_tra_jaccard(pred_df, gt_df)),
     }
 
-def evaluate_one_run(run_dir: str, split_indices: list, gt_map: dict, cache_dir: str, *, verbose=False):
-    """
-    run_dir: ../predictions/<model>/<base|grpo>/seed_<seed>/
-    returns dict with averaged metrics across graphs.
-    """
+# ============================
+# Cache loading
+# ============================
+def load_gt_cache(idx: str, cache_dir: str):
+    cache_path = os.path.join(cache_dir, f"{idx}.pkl")
+    if not os.path.exists(cache_path):
+        return None
+    with open(cache_path, "rb") as f:
+        return pickle.load(f)
+
+# ============================
+# Evaluate one run (uses cache only)
+# ============================
+def evaluate_one_run(run_dir: str, split_indices: list, cache_dir: str, *, verbose=False):
     seed = seed_from_dir(run_dir)
     per_graph = []
-    gt_cache_mem = {}
 
     for idx in tqdm(split_indices, desc=os.path.basename(os.path.dirname(run_dir)) + "/" + os.path.basename(run_dir)):
-        if idx not in gt_map:
+        gt_cache = load_gt_cache(idx, cache_dir)
+        if gt_cache is None:
             if verbose:
-                print(f"[WARN] missing GT mapping for idx={idx}")
+                print(f"[WARN] missing cache for idx={idx} in {cache_dir}")
             continue
-
-        if idx not in gt_cache_mem:
-            gt_cache_mem[idx] = load_or_build_gt_cache_for_idx(idx, gt_map[idx], cache_dir, verbose=verbose)
-        gt_cache = gt_cache_mem[idx]
 
         pred_path = os.path.join(run_dir, f"{idx}_seed{seed}_pred.geojson")
         if not os.path.exists(pred_path):
@@ -243,12 +183,15 @@ def evaluate_one_run(run_dir: str, split_indices: list, gt_map: dict, cache_dir:
                 print(f"[WARN] missing pred for idx={idx}: {pred_path}")
             continue
 
-        gdf_pred = read_geojson(pred_path).to_crs(M.PROJ)
+        # Pred + GT are lon/lat; metrics.py converts internally to M.PROJ
+        gdf_pred_ll = read_geojson(pred_path, default_crs="EPSG:4326")
+        gdf_gt_ll = gt_cache["gdf_gt"]  # stored as lon/lat in cache script
 
-        pred_buf = buffered_union_geom(gdf_pred)
+        # IoU uses buffered unions in projected CRS
+        pred_buf = buffered_union_geom_in_proj(gdf_pred_ll)
         iou_val = buffered_iou_from_unions(gt_cache["gt_buf"], pred_buf)
 
-        pred_df = compute_pred_tile_measures(gt_cache["tile_gdf"], gdf_pred, gt_cache["gdf_gt"])
+        pred_df = compute_pred_tile_measures(gt_cache["tile_gdf"], gdf_pred_ll, gdf_gt_ll)
         gt_df = gt_cache["gt_tile_df"]
 
         per_graph.append(aggregate_metrics(pred_df, gt_df, iou_val))
@@ -279,18 +222,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     datasets = [
-        {
-            "name": "generation_full_data",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
-            "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_csv": "/data/models/bin/2026_pathway_generation/predictions/evaluation_results.csv",
-        },
-        {
-            "name": "pathwaybench_seattle",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-            "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results.csv",
-        },
+        # {
+        #     "name": "generation_full_data",
+        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
+        #     "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
+        #     "out_csv": "/data/models/bin/2026_pathway_generation/predictions/evaluation_results.csv",
+        # },
+        # {
+        #     "name": "pathwaybench_seattle",
+        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+        #     "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+        #     "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results.csv",
+        # },
         {
             "name": "pathwaybench_portland",
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions_portland/",
@@ -314,19 +257,20 @@ if __name__ == "__main__":
             print(f"[SKIP] split file not found: {split_path}")
             continue
 
-        # Load indices
         with open(split_path, "r") as f:
             split_indices = [line.strip() for line in f if line.strip()]
 
-        # Cache dir is per dataset/pred_root
-        cache_dir = os.path.join(pred_root, "_gt_cache")
-        ensure_dir(cache_dir)
+        cache_dir = os.path.join(pred_root, f"_gt_cache_{M.PROJ}")
+        if not os.path.isdir(cache_dir):
+            print(f"[SKIP] cache_dir not found (run evaluation_cache.py first): {cache_dir}")
+            continue
 
-        # One-time GT discovery per dataset
-        gt_map = build_gt_index(pred_root)
+        # optional sanity print
         if args.verbose:
-            print(f"\n[{ds_name}] gt_map found GT for {len(gt_map)} indices")
+            gt_map = build_gt_index(pred_root)
+            print(f"\n[{ds_name}] pred_root: {pred_root}")
             print(f"[{ds_name}] cache_dir: {cache_dir}")
+            print(f"[{ds_name}] discovered GT for {len(gt_map)} indices")
 
         print("\n" + "=" * 80)
         print(f"Evaluating dataset: {ds_name}")
@@ -338,6 +282,10 @@ if __name__ == "__main__":
         rows = []
 
         for model_name in sorted(os.listdir(pred_root)):
+            
+            if model_name != 'swin_tiny':
+                continue
+             
             if model_name.startswith("_"):
                 continue
 
@@ -359,7 +307,6 @@ if __name__ == "__main__":
                     metrics_out = evaluate_one_run(
                         run_dir,
                         split_indices,
-                        gt_map=gt_map,
                         cache_dir=cache_dir,
                         verbose=args.verbose,
                     )
@@ -382,11 +329,9 @@ if __name__ == "__main__":
                         **metrics_out,
                     })
 
-        # Write dataset CSV (only this dataset)
         os.makedirs(os.path.dirname(out_csv), exist_ok=True)
-        df = pd.DataFrame(rows)
-        df.to_csv(out_csv, index=False)
+        pd.DataFrame(rows).to_csv(out_csv, index=False)
         print(f"\n[{ds_name}] Saved: {out_csv}")
-        print(f"[{ds_name}] GT cache stored in: {cache_dir}")
+        print(f"[{ds_name}] Used cache_dir: {cache_dir}")
 
     print("\nDone.")

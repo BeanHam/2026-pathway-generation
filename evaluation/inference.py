@@ -69,8 +69,11 @@ def load_sat_cached(sat_path: str):
     bgr = cv2.imread(sat_path, cv2.IMREAD_COLOR)
     if bgr is None:
         raise FileNotFoundError(sat_path)
-    return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-
+    sat = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    target_h, target_w = 2771, 2772
+    if sat.shape[0] != target_h or sat.shape[1] != target_w:
+        sat = cv2.resize(sat, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+    return sat
 
 # ============================================================
 # Lon/Lat conversion + GeoJSON saving
@@ -321,10 +324,12 @@ def load_inference_config(path: str):
 
 if __name__ == "__main__":
     logs = [
+        "/data/models/bin/2026_pathway_generation/reference_logs/resnet18_ddp_graph_20260209_121921/",
         "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
+        "/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260209_195422/",
         "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260207_231140/",
     ]
-    models = ["swin_tiny", "swin_tiny"]
+    models = ["resnet18", "swin_tiny"] * 2
 
     datasets = [
         {
