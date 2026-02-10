@@ -320,6 +320,7 @@ def load_inference_config(path: str):
 
 
 if __name__ == "__main__":
+    
     logs = [
         "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
         "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260207_231140/",

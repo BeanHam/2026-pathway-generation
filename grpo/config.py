@@ -18,7 +18,7 @@ CONFIG = {
     'output_size':            (256, 256),
     
     # GRPO Training Hyperparams
-    'num_epochs':             20,
+    'num_epochs':             10,
     'grad_accum':             8,
     'lr':                     3e-5,
     'weight_decay':           1e-4,        
@@ -39,5 +39,7 @@ CONFIG = {
 }
 
 REFERENCE_DIRS = {
-    "swin_tiny":       "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
+    "resnet18":   "/data/models/bin/2026_pathway_generation/reference_logs/resnet18_ddp_graph_20260209_121921/",
+    "resnet50":   "/data/models/bin/2026_pathway_generation/reference_logs/resnet50_ddp_graph_20260209_004201/",
+    "swin_tiny":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
 }
