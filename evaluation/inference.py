@@ -320,15 +320,32 @@ def load_inference_config(path: str):
 
 
 if __name__ == "__main__":
-    
     logs = [
         "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
         "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260207_231140/",
     ]
     models = ["swin_tiny", "swin_tiny"]
 
-    out_root = "/data/models/bin/2026_pathway_generation/predictions/"
-    os.makedirs(out_root, exist_ok=True)
+    datasets = [
+        {
+            "name": "generation_full_data",
+            "data_root": "/data/aiclinic/pathways/generation_full_data/pairs/",
+            "test_txt":  "/data/aiclinic/pathways/generation_full_data/test.txt",
+            "out_root":  "/data/models/bin/2026_pathway_generation/predictions/",
+        },
+        {
+            "name": "pathwaybench_seattle",
+            "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
+            "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+        },
+        {
+            "name": "pathwaybench_portland",
+            "data_root": "/data/aiclinic/pathways/pathwaybench_portland/pairs/",
+            "test_txt":  "/data/aiclinic/pathways/pathwaybench_portland/test.txt",
+            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_portland/",
+        },
+    ]
 
     use_ddp = ("WORLD_SIZE" in os.environ) and (int(os.environ["WORLD_SIZE"]) > 1)
     if use_ddp:
@@ -338,80 +355,99 @@ if __name__ == "__main__":
     else:
         rank, world_size = 0, 1
         device = "cuda:0"
-    
-    test_indices = load_indices("/data/aiclinic/pathways/generation_full_data/test.txt")
-    my_indices = shard_list(test_indices, rank, world_size)
-            
-    for run_dir, model_name in zip(logs, models):
-        tag = "grpo" if "grpo_logs" in run_dir else "base"
-        infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config.json"))
 
-        # output size by backbone (set BEFORE building encoder/mean/std)
-        CONFIG["device"] = device
-        CONFIG["model"] = model_name
-        CONFIG["output_size"] = (224, 224) if model_name.startswith("vit") else (256, 256)
-
-        encoder = IterativeEncoder(CONFIG)
-        mean, std = build_norm_tensors(device)
-
+    for ds in datasets:
+        out_root = ds["out_root"]
         if rank == 0:
-            print("-" * 50)
-            print("Model:", model_name, "| tag:", tag, "| world_size:", world_size)
-            print("-" * 50)
+            os.makedirs(out_root, exist_ok=True)
+            print("\n" + "=" * 80)
+            print(f"Dataset: {ds['name']}")
+            print(f"  test_txt : {ds['test_txt']}")
+            print(f"  data_root: {ds['data_root']}")
+            print(f"  out_root : {out_root}")
+            print("=" * 80)
 
-        # load model
-        m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name).to(device)
-        m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
-        m.eval()
-        if should_freeze_bn(model_name):
-            m.apply(freeze_bn)
-        
-        # seeds
-        for seed in range(1):
-                                    
-            out_dir = os.path.join(out_root, model_name, tag, f"seed_{seed}")
-            os.makedirs(out_dir, exist_ok=True)
-                        
-            iterable = my_indices
-            if use_ddp and rank != 0:
-                iterator = iterable
-            else:
-                iterator = tqdm(iterable, desc=f"rank{rank} {model_name} {tag} seed{seed}")
-                
-            for idx in iterator:
-                graph_dir = os.path.join(CONFIG["data_root"], str(idx))
+        if use_ddp:
+            ddp_barrier(local_rank)
 
-                bbox = load_bbox_cached(os.path.join(graph_dir, "bbox.json"))
-                G_gt = load_graph_cached(os.path.join(graph_dir, "graph.pickle"))
-                sat = load_sat_cached(os.path.join(graph_dir, "satellite.png"))
+        # IMPORTANT: set dataset-specific root before processing indices
+        CONFIG["data_root"] = ds["data_root"]
 
-                gt_edges_xy = gt_graph_to_edges_xy(G_gt)
+        test_indices = load_indices(ds["test_txt"])
+        my_indices = shard_list(test_indices, rank, world_size)
 
-                per_graph_seed = int(seed) + int(idx)
+        for run_dir, model_name in zip(logs, models):
+            tag = "grpo" if "grpo_logs" in run_dir else "base"
+            infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config.json"))
 
-                gen = generate_one_graph(
-                    G_gt=G_gt,
-                    satellite_img=sat,
-                    model=m,
-                    encoder=encoder,
-                    cfg=CONFIG,
-                    mean=mean,
-                    std=std,
-                    seed_strategy=infer_cfg.get("seed_strategy", "gt_random"),
-                    seeds_per_graph=int(infer_cfg.get("seeds_per_graph", 1)),
-                    restarts_per_graph=int(infer_cfg.get("restarts_per_graph", 1)),
-                    topk=int(infer_cfg.get("topk", 1)),
-                    stop_prob_thresh=float(infer_cfg.get("stop_prob_thresh", 0.5)),
-                    max_expand_per_node=int(infer_cfg.get("max_expand_per_node", 4)),
-                    max_global_steps=int(infer_cfg.get("max_global_steps", 200)),
-                    rng_seed=per_graph_seed,
-                )
+            # model config
+            CONFIG["device"] = device
+            CONFIG["model"] = model_name
+            CONFIG["output_size"] = (224, 224) if model_name.startswith("vit") else (256, 256)
 
-                pred_edges_xy = gen.get("edges_xy", [])
+            encoder = IterativeEncoder(CONFIG)
+            mean, std = build_norm_tensors(device)
 
-                gt_gdf = edges_norm_to_lonlat_gdf(gt_edges_xy, bbox, crs="EPSG:4326")
-                pr_gdf = edges_norm_to_lonlat_gdf(pred_edges_xy, bbox, crs="EPSG:4326")
-                save_geojson_pair(out_dir, str(idx), seed, gt_gdf, pr_gdf)
+            if rank == 0:
+                print("-" * 50)
+                print("Model:", model_name, "| tag:", tag, "| world_size:", world_size)
+                print("-" * 50)
+
+            # load model weights once per (run_dir, model_name)
+            m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name).to(device)
+            m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
+            m.eval()
+            if should_freeze_bn(model_name):
+                m.apply(freeze_bn)
+
+            # seeds
+            for seed in range(1):
+                out_dir = os.path.join(out_root, model_name, tag, f"seed_{seed}")
+                os.makedirs(out_dir, exist_ok=True)
+
+                iterable = my_indices
+                if use_ddp and rank != 0:
+                    iterator = iterable
+                else:
+                    iterator = tqdm(iterable, desc=f"{ds['name']} rank{rank} {model_name} {tag} seed{seed}")
+
+                for idx in iterator:
+                    graph_dir = os.path.join(CONFIG["data_root"], str(idx))
+
+                    bbox = load_bbox_cached(os.path.join(graph_dir, "bbox.json"))
+                    G_gt = load_graph_cached(os.path.join(graph_dir, "graph.pickle"))
+                    sat = load_sat_cached(os.path.join(graph_dir, "satellite.png"))
+
+                    gt_edges_xy = gt_graph_to_edges_xy(G_gt)
+
+                    per_graph_seed = int(seed) + int(idx)
+
+                    gen = generate_one_graph(
+                        G_gt=G_gt,
+                        satellite_img=sat,
+                        model=m,
+                        encoder=encoder,
+                        cfg=CONFIG,
+                        mean=mean,
+                        std=std,
+                        seed_strategy=infer_cfg.get("seed_strategy", "gt_random"),
+                        seeds_per_graph=int(infer_cfg.get("seeds_per_graph", 1)),
+                        restarts_per_graph=int(infer_cfg.get("restarts_per_graph", 1)),
+                        topk=int(infer_cfg.get("topk", 1)),
+                        stop_prob_thresh=float(infer_cfg.get("stop_prob_thresh", 0.5)),
+                        max_expand_per_node=int(infer_cfg.get("max_expand_per_node", 4)),
+                        max_global_steps=int(infer_cfg.get("max_global_steps", 200)),
+                        rng_seed=per_graph_seed,
+                    )
+
+                    pred_edges_xy = gen.get("edges_xy", [])
+
+                    gt_gdf = edges_norm_to_lonlat_gdf(gt_edges_xy, bbox, crs="EPSG:4326")
+                    pr_gdf = edges_norm_to_lonlat_gdf(pred_edges_xy, bbox, crs="EPSG:4326")
+                    save_geojson_pair(out_dir, str(idx), seed, gt_gdf, pr_gdf)
+
+            if use_ddp:
+                ddp_barrier(local_rank)
 
         if use_ddp:
             ddp_barrier(local_rank)
@@ -421,4 +457,4 @@ if __name__ == "__main__":
         ddp_cleanup()
 
     if rank == 0:
-        print("Done. Saved GeoJSONs under:", out_root)
+        print("Done. Saved GeoJSONs under dataset-specific out_root folders.")

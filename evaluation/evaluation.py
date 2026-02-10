@@ -275,66 +275,118 @@ def evaluate_one_run(run_dir: str, split_indices: list, gt_map: dict, cache_dir:
 # ============================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out_csv", type=str, default="evaluation_results.csv")
-    parser.add_argument("--pred_root", type=str, default="/data/models/bin/2026_pathway_generation/predictions/")
-    parser.add_argument("--split", type=str, default="/data/aiclinic/pathways/generation_full_data/test.txt")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
-    with open(args.split, "r") as f:
-        split_indices = [line.strip() for line in f if line.strip()]
+    datasets = [
+        {
+            "name": "generation_full_data",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
+            "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
+            "out_csv": "/data/models/bin/2026_pathway_generation/predictions/evaluation_results.csv",
+        },
+        {
+            "name": "pathwaybench_seattle",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+            "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+            "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results.csv",
+        },
+        {
+            "name": "pathwaybench_portland",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_portland/",
+            "split": "/data/aiclinic/pathways/pathwaybench_portland/test.txt",
+            "out_csv": "/data/models/bin/2026_pathway_generation/predictions_portland/evaluation_results.csv",
+        },
+    ]
 
-    pred_root = args.pred_root
-    cache_dir = os.path.join(pred_root, "_gt_cache")
-    ensure_dir(cache_dir)
-
-    # One-time GT discovery (big speedup)
-    gt_map = build_gt_index(pred_root)
-    if args.verbose:
-        print(f"[gt_map] found GT for {len(gt_map)} indices")
-
-    rows = []
     seeds = 1
 
-    for model_name in sorted(os.listdir(pred_root)):
-        if model_name.startswith("_"):
+    for ds in datasets:
+        ds_name = ds["name"]
+        pred_root = ds["pred_root"]
+        split_path = ds["split"]
+        out_csv = ds["out_csv"]
+
+        if not os.path.isdir(pred_root):
+            print(f"[SKIP] pred_root not found: {pred_root}")
+            continue
+        if not os.path.exists(split_path):
+            print(f"[SKIP] split file not found: {split_path}")
             continue
 
-        model_dir = os.path.join(pred_root, model_name)
-        if not os.path.isdir(model_dir):
-            continue
+        # Load indices
+        with open(split_path, "r") as f:
+            split_indices = [line.strip() for line in f if line.strip()]
 
-        for tag in ["base", "grpo"]:
-            tag_dir = os.path.join(model_dir, tag)
-            if not os.path.isdir(tag_dir):
+        # Cache dir is per dataset/pred_root
+        cache_dir = os.path.join(pred_root, "_gt_cache")
+        ensure_dir(cache_dir)
+
+        # One-time GT discovery per dataset
+        gt_map = build_gt_index(pred_root)
+        if args.verbose:
+            print(f"\n[{ds_name}] gt_map found GT for {len(gt_map)} indices")
+            print(f"[{ds_name}] cache_dir: {cache_dir}")
+
+        print("\n" + "=" * 80)
+        print(f"Evaluating dataset: {ds_name}")
+        print(f"  pred_root: {pred_root}")
+        print(f"  split:     {split_path}")
+        print(f"  out_csv:   {out_csv}")
+        print("=" * 80)
+
+        rows = []
+
+        for model_name in sorted(os.listdir(pred_root)):
+            if model_name.startswith("_"):
                 continue
 
-            for seed in range(seeds):
-                run_dir = os.path.join(tag_dir, f"seed_{seed}")
-                if not os.path.isdir(run_dir):
+            model_dir = os.path.join(pred_root, model_name)
+            if not os.path.isdir(model_dir):
+                continue
+
+            for tag in ["base", "grpo"]:
+                tag_dir = os.path.join(model_dir, tag)
+                if not os.path.isdir(tag_dir):
                     continue
 
-                print(f"\n=== Evaluating {model_name} [{tag}] seed={seed} ===")
-                metrics_out = evaluate_one_run(
-                    run_dir,
-                    split_indices,
-                    gt_map=gt_map,
-                    cache_dir=cache_dir,
-                    verbose=args.verbose,
-                )
+                for seed in range(seeds):
+                    run_dir = os.path.join(tag_dir, f"seed_{seed}")
+                    if not os.path.isdir(run_dir):
+                        continue
 
-                print(f"Avg degree:                 {metrics_out['avg_degree']}")
-                print(f"Avg betweenness:            {metrics_out['avg_betweenness']}")
-                print(f"Avg # connected components: {metrics_out['avg_num_components']}")
-                print(f"Avg IoU:                    {metrics_out['iou']}")
-                print(f"Avg F1:                     {metrics_out['avg_f1']}")
-                print(f"Traversability:             {metrics_out['traversability']}")
-                print(f"Traversability similarity:  {metrics_out['traversability_similarity']}")
-                print(f"Graphs evaluated:           {metrics_out['n_graphs']}")
+                    print(f"\n=== [{ds_name}] Evaluating {model_name} [{tag}] seed={seed} ===")
+                    metrics_out = evaluate_one_run(
+                        run_dir,
+                        split_indices,
+                        gt_map=gt_map,
+                        cache_dir=cache_dir,
+                        verbose=args.verbose,
+                    )
 
-                rows.append({"model": model_name, "tag": tag, "seed": seed, **metrics_out})
+                    print(f"Avg degree:                 {metrics_out['avg_degree']}")
+                    print(f"Avg betweenness:            {metrics_out['avg_betweenness']}")
+                    print(f"Avg # connected components: {metrics_out['avg_num_components']}")
+                    print(f"Avg IoU:                    {metrics_out['iou']}")
+                    print(f"Avg F1:                     {metrics_out['avg_f1']}")
+                    print(f"Traversability:             {metrics_out['traversability']}")
+                    print(f"Traversability similarity:  {metrics_out['traversability_similarity']}")
+                    print(f"Graphs evaluated:           {metrics_out['n_graphs']}")
 
-    df = pd.DataFrame(rows)
-    df.to_csv(args.out_csv, index=False)
-    print(f"\nSaved: {args.out_csv}")
-    print(f"GT cache stored in: {cache_dir}")
+                    rows.append({
+                        "dataset": ds_name,
+                        "pred_root": pred_root,
+                        "model": model_name,
+                        "tag": tag,
+                        "seed": seed,
+                        **metrics_out,
+                    })
+
+        # Write dataset CSV (only this dataset)
+        os.makedirs(os.path.dirname(out_csv), exist_ok=True)
+        df = pd.DataFrame(rows)
+        df.to_csv(out_csv, index=False)
+        print(f"\n[{ds_name}] Saved: {out_csv}")
+        print(f"[{ds_name}] GT cache stored in: {cache_dir}")
+
+    print("\nDone.")
