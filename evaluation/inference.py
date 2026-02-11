@@ -343,13 +343,7 @@ if __name__ == "__main__":
             "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
             "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
             "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-        },
-        {
-            "name": "pathwaybench_portland",
-            "data_root": "/data/aiclinic/pathways/pathwaybench_portland/pairs/",
-            "test_txt":  "/data/aiclinic/pathways/pathwaybench_portland/test.txt",
-            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_portland/",
-        },
+        }
     ]
 
     use_ddp = ("WORLD_SIZE" in os.environ) and (int(os.environ["WORLD_SIZE"]) > 1)

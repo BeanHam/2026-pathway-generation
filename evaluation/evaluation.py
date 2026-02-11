@@ -234,12 +234,6 @@ if __name__ == "__main__":
             "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
             "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results.csv",
         },
-        {
-            "name": "pathwaybench_portland",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_portland/",
-            "split": "/data/aiclinic/pathways/pathwaybench_portland/test.txt",
-            "out_csv": "/data/models/bin/2026_pathway_generation/predictions_portland/evaluation_results.csv",
-        },
     ]
 
     seeds = 1

@@ -222,11 +222,6 @@ if __name__ == "__main__":
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
             "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
         },
-        {
-            "name": "pathwaybench_portland",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_portland/",
-            "split": "/data/aiclinic/pathways/pathwaybench_portland/test.txt",
-        },
     ]
 
     for ds in datasets:
