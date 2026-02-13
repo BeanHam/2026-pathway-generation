@@ -76,7 +76,7 @@ if __name__ == "__main__":
         val_indices = [line.strip() for line in f]
 
     if rank == 0:
-        run_name = f"{CONFIG['model']}_ddp_graph_{time.strftime('%Y%m%d_%H%M%S')}"
+        run_name = f"{CONFIG['model']}_ddp_graph_{time.strftime('%Y%m%d_%H%M%S')}_cont"
         run_dir = os.path.join(CONFIG["save_path"], run_name)
         os.makedirs(run_dir, exist_ok=True)
         loss_path = os.path.join(run_dir, "loss_log.pkl")
