@@ -18,7 +18,7 @@ CONFIG = {
     'output_size':            (256, 256),
     
     # GRPO Training Hyperparams
-    'num_epochs':             10,
+    'num_epochs':             15,
     'grad_accum':             8,
     'lr':                     3e-5,
     'weight_decay':           1e-4,        
@@ -39,7 +39,9 @@ CONFIG = {
 }
 
 REFERENCE_DIRS = {
-    "resnet18":   "/data/models/bin/2026_pathway_generation/reference_logs/resnet18_ddp_graph_20260209_121921/",
-    "resnet50":   "/data/models/bin/2026_pathway_generation/reference_logs/resnet50_ddp_graph_20260209_004201/",
-    "swin_tiny":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
+    "swin_tiny_0.2":  '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/',
+    "swin_tiny_0.4":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154110_0.4_cont/",
+    "swin_tiny_0.6":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_234446_0.6_cont/",
+    "swin_tiny_0.8":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154830_0.8_cont/",
+    "swin_tiny":      "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/",
 }
