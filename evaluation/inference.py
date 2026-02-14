@@ -324,13 +324,15 @@ def load_inference_config(path: str):
 
 if __name__ == "__main__":
     logs = [
-        "/data/models/bin/2026_pathway_generation/reference_logs/resnet18_ddp_graph_20260209_121921/",
-        "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
-        "/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260209_195422/",
-        "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260207_231140/",
+        # "/data/models/bin/2026_pathway_generation/reference_logs/resnet18_ddp_graph_20260209_121921/",
+        # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
+        '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
+        # "/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260209_195422/",
+        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260207_231140/",
     ]
-    models = ["resnet18", "swin_tiny"] * 2
-
+    # models = ["resnet18", "swin_tiny"] * 2
+    models = ["swin_tiny_cont"]
+    
     datasets = [
         {
             "name": "generation_full_data",
@@ -393,9 +395,15 @@ if __name__ == "__main__":
                 print("-" * 50)
 
             # load model weights once per (run_dir, model_name)
-            m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name).to(device)
-            m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
-            m.eval()
+            
+            if model_name in ['swin_tiny_cont', 'swin_tiny_0.2', 'swin_tiny_0.4', 'swin_tiny_0.6', 'swin_tiny_0.8']:
+                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
+                m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
+                m.eval()
+            else:
+                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name).to(device)
+                m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
+                m.eval()
             if should_freeze_bn(model_name):
                 m.apply(freeze_bn)
 

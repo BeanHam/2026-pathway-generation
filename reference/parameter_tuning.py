@@ -7,20 +7,54 @@ import random
 import itertools
 import numpy as np
 import pandas as pd
+import torch.distributed as dist
+from datetime import timedelta
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from tqdm import tqdm
 from functools import lru_cache
 from shapely.ops import unary_union
 from shapely.geometry import LineString
-from utils import *
-from model import *
+
+from utils import crop_image, IterativeEncoder, should_freeze_bn, freeze_bn
+from model import PathwayModel
+
+
+# ----------------------------
+# DDP helpers
+# ----------------------------
+def ddp_setup():
+    dist.init_process_group(
+        backend="nccl",
+        timeout=timedelta(minutes=60),
+        device_id=torch.device(f"cuda:{int(os.environ['LOCAL_RANK'])}"),
+    )
+    local_rank = int(os.environ["LOCAL_RANK"])
+    rank = int(os.environ["RANK"])
+    world_size = int(os.environ["WORLD_SIZE"])
+    torch.cuda.set_device(local_rank)
+    return local_rank, rank, world_size
+
+def ddp_cleanup():
+    dist.destroy_process_group()
+
+def shard_list(items, rank, world_size):
+    return items[rank::world_size]
+
+def allreduce_sum_count(sum_val: float, count: int, device):
+    """
+    Allreduce (sum, count) across ranks.
+    """
+    t = torch.tensor([sum_val, float(count)], device=device)
+    dist.all_reduce(t, op=dist.ReduceOp.SUM)
+    return float(t[0].item()), int(t[1].item())
+
 
 # ----------------------------
 # Basic helpers
 # ----------------------------
 def node_to_px(xy, H, W):
     x, y = xy
-    # clamp to valid pixel indices (avoids x==1.0 -> W)
     px = int(np.clip(x * (W - 1), 0, W - 1))
     py = int(np.clip((1 - y) * (H - 1), 0, H - 1))
     return (px, py)
@@ -31,7 +65,6 @@ def build_norm_tensors(device):
     return mean, std
 
 def build_input_tensor(satellite_img, canvas, u_pos, CONFIG, device, mean, std):
-    """Build [1,4,256,256] input exactly like training."""
     H, W = satellite_img.shape[:2]
     px_u = node_to_px(u_pos, H, W)
 
@@ -41,17 +74,16 @@ def build_input_tensor(satellite_img, canvas, u_pos, CONFIG, device, mean, std):
     sat_crop = crop_image(satellite_img, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
     can_crop = crop_image(canvas_with_dot, u_pos, CONFIG["crop_size"], CONFIG["output_size"])
 
-    inp = np.concatenate([sat_crop, can_crop[..., None]], axis=2)  # (H,W,4)
+    inp = np.concatenate([sat_crop, can_crop[..., None]], axis=2)
 
     x = torch.from_numpy(inp).permute(2, 0, 1).float().unsqueeze(0) / 255.0
-    x = x.to(device)
+    x = x.to(device, non_blocking=True)
     x = (x - mean) / std
     return x
 
 def choose_seed_positions(strategy, satellite_img, num_seeds, rng, gt_graph=None):
     if strategy == "random":
         return [(rng.random(), rng.random()) for _ in range(num_seeds)]
-
     if strategy == "grid":
         k = int(np.ceil(np.sqrt(num_seeds)))
         xs = np.linspace(0.1, 0.9, k)
@@ -59,20 +91,19 @@ def choose_seed_positions(strategy, satellite_img, num_seeds, rng, gt_graph=None
         pts = [(float(x), float(y)) for y in ys for x in xs]
         rng.shuffle(pts)
         return pts[:num_seeds]
-
     if strategy == "gt_random":
         assert gt_graph is not None
         nodes = list(gt_graph.nodes)
         return [rng.choice(nodes) for _ in range(num_seeds)]
-
     raise ValueError(f"Unknown seed strategy: {strategy}")
 
 def topk_action_indices(logits_1d, k):
     k = min(int(k), int(logits_1d.numel()))
     return torch.topk(logits_1d, k=k, largest=True).indices.tolist()
 
+
 # ----------------------------
-# Cached loaders (avoid repeated disk IO)
+# Cached loaders
 # ----------------------------
 @lru_cache(maxsize=256)
 def load_gt_graph(data_root: str, idx: str):
@@ -84,7 +115,6 @@ def load_gt_graph(data_root: str, idx: str):
 def load_sat_rgb(data_root: str, idx: str, sat_name: str = "satellite.png"):
     path = os.path.join(data_root, str(idx))
     img_path = os.path.join(path, sat_name)
-    # Use cv2 for speed
     bgr = cv2.imread(img_path, cv2.IMREAD_COLOR)
     if bgr is None:
         raise FileNotFoundError(img_path)
@@ -93,8 +123,10 @@ def load_sat_rgb(data_root: str, idx: str, sat_name: str = "satellite.png"):
 def gt_graph_to_edges_xy(G):
     return [(tuple(u), tuple(v)) for (u, v) in G.edges]
 
+
 # ----------------------------
-# Inference (same logic, but avoids per-step mean/std creation)
+# Inference (same logic)
+#   IMPORTANT: build mean/std ONCE per process (per trial calls re-use)
 # ----------------------------
 @torch.no_grad()
 def generate_one_graph(
@@ -102,13 +134,14 @@ def generate_one_graph(
     model,
     encoder,
     CONFIG,
+    mean,
+    std,
     device=None,
     seed_strategy="gt_random",
     seeds_per_graph=1,
     restarts_per_graph=1,
     topk=5,
     stop_prob_thresh=0.5,
-    stop_fallback_thresh=0.2,
     prevent_repeat_actions=True,
     rng_seed=0,
     max_global_steps=200,
@@ -117,10 +150,9 @@ def generate_one_graph(
     if device is None:
         device = CONFIG["device"]
 
-    mean, std = build_norm_tensors(device)
     rng = random.Random(rng_seed)
-
     data_root = CONFIG["data_root"]
+
     G_gt = load_gt_graph(data_root, str(folder_idx))
     sat = load_sat_rgb(data_root, str(folder_idx), sat_name="satellite.png")
     H, W = sat.shape[:2]
@@ -128,6 +160,8 @@ def generate_one_graph(
     model.eval()
     if should_freeze_bn(CONFIG["model"]):
         model.apply(freeze_bn)
+
+    stop_idx = int(CONFIG["stop_class_idx"])
 
     def run_once(starts):
         canvas = np.zeros((H, W), dtype=np.uint8)
@@ -161,7 +195,7 @@ def generate_one_graph(
                 x = build_input_tensor(sat, canvas, u_pos, CONFIG, device, mean, std)
                 logits = model(x)[0]
                 probs = torch.softmax(logits, dim=0)
-                stop_prob = float(probs[CONFIG["stop_class_idx"]].item())
+                stop_prob = float(probs[stop_idx].item())
 
                 top2 = torch.topk(logits, k=2).values
                 if top2.numel() == 2:
@@ -169,9 +203,9 @@ def generate_one_graph(
 
                 if topk == 1:
                     a0 = int(torch.argmax(logits).item())
-                    if a0 == CONFIG["stop_class_idx"] and stop_prob < stop_prob_thresh:
+                    if a0 == stop_idx and stop_prob < stop_prob_thresh:
                         logits_ns = logits.clone()
-                        logits_ns[CONFIG["stop_class_idx"]] = -1e9
+                        logits_ns[stop_idx] = -1e9
                         cand_actions = [int(torch.argmax(logits_ns).item())]
                     else:
                         cand_actions = [a0]
@@ -187,7 +221,7 @@ def generate_one_graph(
                     if prevent_repeat_actions and a_idx in used_actions:
                         continue
 
-                    if a_idx == CONFIG["stop_class_idx"]:
+                    if a_idx == stop_idx:
                         if stop_prob >= stop_prob_thresh:
                             chosen_action = a_idx
                             break
@@ -210,11 +244,7 @@ def generate_one_graph(
                     chosen_end = new_pos
                     break
 
-                if chosen_action is None:
-                    # same behavior as your original: stop if nothing valid
-                    break
-
-                if chosen_action == CONFIG["stop_class_idx"]:
+                if chosen_action is None or chosen_action == stop_idx:
                     break
 
                 if prevent_repeat_actions:
@@ -234,16 +264,9 @@ def generate_one_graph(
 
                 steps_used += 1
 
-        gen = {
-            "nodes_xy": nodes_xy,
-            "edges_xy": edges_xy,
-            "edges_ij": [tuple(e) for e in edges_set],
-            "starts": starts,
-        }
-        stats = {"confidence": float(confidence)}
-        return gen, stats
+        return {"edges_xy": edges_xy}, {"confidence": float(confidence)}
 
-    best_gen = {"nodes_xy": [], "edges_xy": [], "edges_ij": [], "starts": []}
+    best_gen = {"edges_xy": []}
     best_score = -1e18
 
     for _ in range(restarts_per_graph):
@@ -256,9 +279,9 @@ def generate_one_graph(
 
     return best_gen
 
+
 # ----------------------------
 # Shapely buffered IoU (IoU only)
-#   - cache GT buffered union per (idx, buffer_radius)
 # ----------------------------
 def edges_xy_to_lines(edges_xy):
     geoms = []
@@ -276,43 +299,34 @@ def gt_buffered_union(data_root: str, idx: str, buffer_radius: float, cap_style:
     gt_edges_xy = gt_graph_to_edges_xy(G_gt)
     lines = edges_xy_to_lines(gt_edges_xy)
     if not lines:
-        return None  # empty
+        return None
     bufs = [ln.buffer(buffer_radius, cap_style=cap_style, join_style=join_style) for ln in lines]
     return unary_union(bufs)
 
-def buffered_iou(
-    gt_buf_union,            # cached union geometry (or None)
-    pred_edges_xy,
-    *,
-    buffer_radius=0.01,
-    cap_style=2,
-    join_style=2,
-):
-    # pred buffered union
+def buffered_iou(gt_buf_union, pred_edges_xy, *, buffer_radius=0.01, cap_style=2, join_style=2):
     pred_lines = edges_xy_to_lines(pred_edges_xy)
     if not pred_lines:
         return 1.0 if gt_buf_union is None else 0.0
-
     pred_bufs = [ln.buffer(buffer_radius, cap_style=cap_style, join_style=join_style) for ln in pred_lines]
     pr_union = unary_union(pred_bufs)
-
     if gt_buf_union is None:
         return 0.0
-
     inter_area = float(gt_buf_union.intersection(pr_union).area)
     union_area = float(gt_buf_union.union(pr_union).area)
     return float(inter_area / (union_area + 1e-12))
 
+
 # ----------------------------
-# Eval + tuning (IoU only)
+# DDP Eval: shard indices each trial, allreduce sums
 # ----------------------------
 @torch.no_grad()
-def eval_iou(
+def eval_iou_ddp(
     indices,
     CONFIG,
     model,
     encoder,
-    generate_one_graph,
+    mean,
+    std,
     *,
     rng_seed=0,
     buffer_radius=0.01,
@@ -324,12 +338,17 @@ def eval_iou(
     topk=5,
     stop_prob_thresh=0.5,
     max_expand_per_node=4,
+    rank=0,
+    world_size=1,
 ):
     data_root = CONFIG["data_root"]
-    iou_sum = 0.0
-    n = 0
+    device = CONFIG["device"]
 
-    for idx in tqdm(indices, desc="Eval buffered IoU (IoU-only)"):
+    my_indices = shard_list(list(indices), rank, world_size)
+    iou_sum_local = 0.0
+    n_local = 0
+
+    for idx in my_indices:
         idx = str(idx)
         per_graph_seed = int(rng_seed) + int(idx)
 
@@ -338,6 +357,8 @@ def eval_iou(
             model=model,
             encoder=encoder,
             CONFIG=CONFIG,
+            mean=mean,
+            std=std,
             seed_strategy=seed_strategy,
             seeds_per_graph=seeds_per_graph,
             restarts_per_graph=restarts_per_graph,
@@ -349,25 +370,25 @@ def eval_iou(
         pred_edges_xy = gen.get("edges_xy", [])
 
         gt_union = gt_buffered_union(data_root, idx, float(buffer_radius), int(cap_style), int(join_style))
-        iou = buffered_iou(
-            gt_union,
-            pred_edges_xy,
-            buffer_radius=buffer_radius,
-            cap_style=cap_style,
-            join_style=join_style,
-        )
+        iou = buffered_iou(gt_union, pred_edges_xy, buffer_radius=buffer_radius, cap_style=cap_style, join_style=join_style)
 
-        iou_sum += float(iou)
-        n += 1
+        iou_sum_local += float(iou)
+        n_local += 1
 
-    return {"mean_iou": float(iou_sum / max(n, 1))}
+    if dist.is_initialized():
+        iou_sum, n_total = allreduce_sum_count(iou_sum_local, n_local, device)
+    else:
+        iou_sum, n_total = iou_sum_local, n_local
 
-def tune_inference_hparams(
+    mean_iou = float(iou_sum / max(n_total, 1))
+    return {"mean_iou": mean_iou, "n_graphs": int(n_total)}
+
+
+def tune_inference_hparams_ddp(
     val_indices,
     CONFIG,
     model,
     encoder,
-    generate_one_graph,
     *,
     seed_strategy="gt_random",
     seeds_per_graph=1,
@@ -379,101 +400,113 @@ def tune_inference_hparams(
     topk_grid=(1, 5, 10),
     stop_prob_grid=(0.3, 0.4, 0.5, 0.6),
     max_expand_grid=(4, 8, 12),
-    max_graphs=None,
-    random_subset_seed=123,
-    mode="grid",
-    random_trials=25,
+    max_graphs=200,
+    subset_seed=123,
+    rank=0,
+    world_size=1,
     verbose=True,
 ):
+    # deterministic subset selection (rank-safe)
     indices = list(val_indices)
     if max_graphs is not None and max_graphs < len(indices):
-        rs = np.random.RandomState(random_subset_seed)
+        rs = np.random.RandomState(subset_seed)
         indices = [indices[i] for i in rs.choice(len(indices), size=max_graphs, replace=False)]
-        if verbose:
-            print(f"[tune] Using subset: {len(indices)}/{len(val_indices)} graphs")
 
-    if mode == "grid":
-        candidates = list(itertools.product(restarts_grid, topk_grid, stop_prob_grid, max_expand_grid))
-    elif mode == "random":
-        rs = np.random.RandomState(random_subset_seed)
-        candidates = []
-        for _ in range(int(random_trials)):
-            candidates.append((
-                int(rs.choice(restarts_grid)),
-                int(rs.choice(topk_grid)),
-                float(rs.choice(stop_prob_grid)),
-                int(rs.choice(max_expand_grid)),
-            ))
-    else:
-        raise ValueError("mode must be 'grid' or 'random'")
+    candidates = list(itertools.product(restarts_grid, topk_grid, stop_prob_grid, max_expand_grid))
+    if rank == 0 and verbose:
+        print(f"[tune] Trials: {len(candidates)} | graphs: {len(indices)} | world_size={world_size}")
 
-    if verbose:
-        print(f"[tune] Trials: {len(candidates)} (mode={mode})")
+    mean, std = build_norm_tensors(CONFIG["device"])
 
     rows = []
     best_score = -1e18
     best_cfg = None
     best_metrics = None
 
-    for t_idx, (restarts_per_graph, topk, stop_prob_thresh, max_expand_per_node) in enumerate(candidates, 1):
-        metrics_out = eval_iou(
+    iterator = enumerate(candidates, 1)
+    if rank == 0:
+        iterator = tqdm(list(iterator), desc="Tuning trials (rank0)")
+
+    for t_idx, (restarts_per_graph, topk, stop_prob_thresh, max_expand_per_node) in iterator:
+        metrics_out = eval_iou_ddp(
             indices=indices,
             CONFIG=CONFIG,
             model=model,
             encoder=encoder,
-            generate_one_graph=generate_one_graph,
+            mean=mean,
+            std=std,
             seed_strategy=seed_strategy,
             seeds_per_graph=seeds_per_graph,
-            restarts_per_graph=restarts_per_graph,
-            topk=topk,
-            stop_prob_thresh=stop_prob_thresh,
+            restarts_per_graph=int(restarts_per_graph),
+            topk=int(topk),
+            stop_prob_thresh=float(stop_prob_thresh),
             rng_seed=rng_seed,
             buffer_radius=buffer_radius,
             cap_style=cap_style,
             join_style=join_style,
-            max_expand_per_node=max_expand_per_node,
+            max_expand_per_node=int(max_expand_per_node),
+            rank=rank,
+            world_size=world_size,
         )
         mean_iou = float(metrics_out["mean_iou"])
 
-        rows.append({
-            "trial": t_idx,
-            "restarts_per_graph": restarts_per_graph,
-            "topk": topk,
-            "stop_prob_thresh": stop_prob_thresh,
-            "max_expand_per_node": max_expand_per_node,
-            "mean_iou": mean_iou,
-        })
+        # only rank0 logs/records rows
+        if rank == 0:
+            rows.append({
+                "trial": t_idx,
+                "restarts_per_graph": int(restarts_per_graph),
+                "topk": int(topk),
+                "stop_prob_thresh": float(stop_prob_thresh),
+                "max_expand_per_node": int(max_expand_per_node),
+                "mean_iou": mean_iou,
+            })
 
-        if mean_iou > best_score:
-            best_score = mean_iou
-            best_cfg = {
-                "seed_strategy": seed_strategy,
-                "seeds_per_graph": seeds_per_graph,
-                "restarts_per_graph": restarts_per_graph,
-                "topk": topk,
-                "stop_prob_thresh": stop_prob_thresh,
-                "max_expand_per_node": max_expand_per_node,
-                "buffer_radius": buffer_radius,
-                "cap_style": cap_style,
-                "join_style": join_style,
-                "rng_seed": rng_seed,
-            }
-            best_metrics = dict(metrics_out)
+            if mean_iou > best_score:
+                best_score = mean_iou
+                best_cfg = {
+                    "seed_strategy": seed_strategy,
+                    "seeds_per_graph": int(seeds_per_graph),
+                    "restarts_per_graph": int(restarts_per_graph),
+                    "topk": int(topk),
+                    "stop_prob_thresh": float(stop_prob_thresh),
+                    "max_expand_per_node": int(max_expand_per_node),
+                    "buffer_radius": float(buffer_radius),
+                    "cap_style": int(cap_style),
+                    "join_style": int(join_style),
+                    "rng_seed": int(rng_seed),
+                    "max_global_steps": int(CONFIG.get("max_global_steps", 200)),
+                }
+                best_metrics = dict(metrics_out)
 
-        if verbose:
-            print(
-                f"[tune] {t_idx:03d}/{len(candidates)} "
-                f"iou={mean_iou:.4f} "
-                f"(restarts={restarts_per_graph}, topk={topk}, stop={stop_prob_thresh}, maxexp={max_expand_per_node}) "
-                f"| best_iou={best_score:.4f}"
-            )
+            if verbose:
+                print(
+                    f"[tune] {t_idx:03d}/{len(candidates)} "
+                    f"iou={mean_iou:.4f} "
+                    f"(restarts={restarts_per_graph}, topk={topk}, stop={stop_prob_thresh}, maxexp={max_expand_per_node}) "
+                    f"| best_iou={best_score:.4f}"
+                )
 
-    df = pd.DataFrame(rows).sort_values("mean_iou", ascending=False).reset_index(drop=True)
-    return best_cfg, best_metrics, df
+        if dist.is_initialized():
+            dist.barrier(device_ids=[local_rank])
+
+    if rank == 0:
+        df = pd.DataFrame(rows).sort_values("mean_iou", ascending=False).reset_index(drop=True)
+        return best_cfg, best_metrics, df
+    return None, None, None
 
 
+# ----------------------------
+# Main (torchrun)
+# ----------------------------
 if __name__ == "__main__":
-    
+    use_ddp = ("WORLD_SIZE" in os.environ) and (int(os.environ["WORLD_SIZE"]) > 1)
+    if use_ddp:
+        local_rank, rank, world_size = ddp_setup()
+        device = f"cuda:{local_rank}"
+    else:
+        rank, world_size = 0, 1
+        device = "cuda:0"
+
     logs = [
         # '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_ddp_graph_20260209_121921/',        
         # '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/'
@@ -483,33 +516,56 @@ if __name__ == "__main__":
         '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_221908_0.8/',
         '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/'
     ]
+
     with open("/data/aiclinic/pathways/generation_full_data/val.txt", "r") as f:
-        val_indices = [line.strip() for line in f]
-    
-    for i, log in enumerate(logs):
-        with open(log+'run_config.json', 'r') as f:
+        val_indices = [line.strip() for line in f if line.strip()]
+
+    for log in logs:
+        # load run config
+        with open(os.path.join(log, "run_config.json"), "r") as f:
             config = json.load(f)
-        config['device'] = "cuda:2"
+
+        config["device"] = device  # each rank uses its own GPU
         encoder = IterativeEncoder(config)
-        model = PathwayModel(num_classes=config['total_classes'], backbone_name=config["model"]).to(config['device'])
-        model.load_state_dict(torch.load(log+"model_best.pth", map_location=config["device"]))
-        best_cfg, best_metrics, df = tune_inference_hparams(
+
+        model = PathwayModel(num_classes=config["total_classes"], backbone_name=config["model"]).to(device)
+        model.load_state_dict(torch.load(os.path.join(log, "model_best.pth"), map_location=device))
+        model.eval()
+        if should_freeze_bn(config["model"]):
+            model.apply(freeze_bn)
+
+        if rank == 0:
+            print("\n" + "=" * 80)
+            print("Tuning:", log)
+            print("device:", device, "| world_size:", world_size)
+            print("=" * 80)
+
+        best_cfg, best_metrics, df = tune_inference_hparams_ddp(
             val_indices=val_indices,
             CONFIG=config,
             model=model,
             encoder=encoder,
-            generate_one_graph=generate_one_graph,
             seed_strategy="gt_random",
             seeds_per_graph=1,
             buffer_radius=0.01,
             rng_seed=0,
-            restarts_grid=(1,5),
-            topk_grid=(5,10),
+            restarts_grid=(1, 5),
+            topk_grid=(5, 10),
             stop_prob_grid=(0.4, 0.5, 0.6, 0.7),
             max_expand_grid=(4, 6, 8),
             max_graphs=200,
-            mode="grid",
+            rank=rank,
+            world_size=world_size,
             verbose=True,
         )
-        with open(log+'inference_config.json', 'w') as f:
-            json.dump(best_cfg, f, indent=4)
+
+        if rank == 0:
+            with open(os.path.join(log, "inference_config.json"), "w") as f:
+                json.dump(best_cfg, f, indent=4)            
+            print("[tune] saved:", os.path.join(log, "inference_config.json"))
+            
+        if dist.is_initialized():
+            dist.barrier(device_ids=[local_rank])
+
+    if use_ddp:
+        ddp_cleanup()

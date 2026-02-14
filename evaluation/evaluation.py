@@ -226,14 +226,16 @@ if __name__ == "__main__":
             "name": "generation_full_data",
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
             "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_csv": "/data/models/bin/2026_pathway_generation/predictions/evaluation_results_resnet18.csv",
+            # "out_csv": "/data/models/bin/2026_pathway_generation/predictions/evaluation_results_resnet18.csv",
+            "out_csv": "/data/models/bin/2026_pathway_generation/predictions/evaluation_results_swin_tiny_cont.csv",
         },
-        # {
-        #     "name": "pathwaybench_seattle",
-        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-        #     "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-        #     "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results.csv",
-        # },
+        {
+            "name": "pathwaybench_seattle",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+            "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+            # "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results.csv",
+            "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_swin_tiny_cont.csv",
+        },
     ]
 
     seeds = 1
@@ -277,7 +279,7 @@ if __name__ == "__main__":
 
         for model_name in sorted(os.listdir(pred_root)):
             
-            if model_name != 'resnet18':
+            if model_name != 'swin_tiny_cont':
                 continue
             
             if model_name.startswith("_"):

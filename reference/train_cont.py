@@ -93,7 +93,7 @@ if __name__ == "__main__":
     log = '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/'
     model.load_state_dict(torch.load(log+"model_best.pth", map_location=device))
     loss = np.load(log+'loss_log.pkl', allow_pickle=True)
-    val = np.stack(loss['val'])
+    val = np.stack(loss['val'])[:,2]
     best_val = np.min(val)
     # --------------------------------------------------------------------------------------------------------
     
@@ -110,7 +110,6 @@ if __name__ == "__main__":
     std  = torch.tensor([0.229, 0.224, 0.225, 1.0], device=device).view(1, 4, 1, 1)
 
     history = {"train": [], "val": []}
-    best_val = float("inf")
     global_step = 0
 
     accum_graphs = max(1, int(args.accum_graphs))
