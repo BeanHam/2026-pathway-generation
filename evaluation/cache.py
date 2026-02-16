@@ -239,7 +239,7 @@ if __name__ == "__main__":
         with open(split_path, "r") as f:
             split_indices = [line.strip() for line in f if line.strip()]
 
-        cache_dir = os.path.join(pred_root, f"_gt_cache_{M.PROJ}")
+        cache_dir = os.path.join(pred_root, f"_gt_cache_{M.PROJ}_{M.BUFF_DIS}")
         ensure_dir(cache_dir)
 
         gt_map = build_gt_index(pred_root)

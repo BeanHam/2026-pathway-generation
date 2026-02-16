@@ -854,7 +854,10 @@ def grpo_train_main_proportion(CONFIG, ddp_rank=0, ddp_world_size=1):
     set_seed(CONFIG["seed"] + ddp_rank)
     device = CONFIG["device"]
     use_ddp = dist.is_available() and dist.is_initialized()
-
+    if use_ddp:
+        ddp_rank = dist.get_rank()
+        ddp_world_size = dist.get_world_size()
+    
     # indices
     with open(CONFIG["train_index"], "r") as f:
         train_all = [line.strip() for line in f]
@@ -1169,7 +1172,6 @@ def grpo_train_main_cont(CONFIG, ddp_rank=0, ddp_world_size=1):
     ## ref model    
     ref_ckpt = torch.load("/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/model_best.pth", map_location=device)
     ref.load_state_dict(ref_ckpt)
-
     ref.eval()
     if should_freeze_bn(CONFIG["model"]):
         ref.apply(freeze_bn)
@@ -1188,10 +1190,10 @@ def grpo_train_main_cont(CONFIG, ddp_rank=0, ddp_world_size=1):
     optimizer = optim.AdamW(policy.parameters(), lr=CONFIG["lr"], weight_decay=CONFIG["weight_decay"])
 
     mean4, std4 = _mean_std_4(device)
-
-    history = {"train_iou": [], "val_iou": [], "train_reward": [], "train_kl_raw_mean": []}
-    best_val_iou = -1.0
-
+    with open("/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_001501/history.json", 'r') as f:
+        history = json.load(f)
+    best_val_iou = np.max(history["val_iou"])
+    
     for epoch in range(CONFIG["num_epochs"]):
         # shard train list
         rng = random.Random(CONFIG["seed"] + epoch)
@@ -1331,6 +1333,11 @@ def grpo_train_main_cont(CONFIG, ddp_rank=0, ddp_world_size=1):
         train_reward = float(np.mean(e_reward)) if e_reward else 0.0
         train_klraw = float(np.mean(e_klraw)) if e_klraw else 0.0
 
+        if use_ddp:
+            # safer barrier: tie it to GPU if you use NCCL
+            local_rank = int(os.environ["LOCAL_RANK"])
+            dist.barrier(device_ids=[local_rank])
+    
         train_iou = allreduce_mean(train_iou, device)
         train_reward = allreduce_mean(train_reward, device)
         train_klraw = allreduce_mean(train_klraw, device)
