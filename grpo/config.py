@@ -39,9 +39,10 @@ CONFIG = {
 }
 
 REFERENCE_DIRS = {
-    "swin_tiny_0.2":  '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/',
+    "swin_tiny_0.2":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/",
     "swin_tiny_0.4":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154110_0.4_cont/",
     "swin_tiny_0.6":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_234446_0.6_cont/",
     "swin_tiny_0.8":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154830_0.8_cont/",
     "swin_tiny":      "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/",
+    "swin_tiny_cont": "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_001501/",
 }

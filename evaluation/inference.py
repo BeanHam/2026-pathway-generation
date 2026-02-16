@@ -324,14 +324,11 @@ def load_inference_config(path: str):
 
 if __name__ == "__main__":
     logs = [
-        # "/data/models/bin/2026_pathway_generation/reference_logs/resnet18_ddp_graph_20260209_121921/",
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
         '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
-        # "/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260209_195422/",
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260207_231140/",
     ]
     # models = ["resnet18", "swin_tiny"] * 2
-    models = ["swin_tiny_cont"]
     
     datasets = [
         {
