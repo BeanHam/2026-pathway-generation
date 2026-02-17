@@ -25,11 +25,6 @@ PRES = 1e-5
 E_THRES = 5
 BUFF_DIS = 4
 
-# PROJ = 'epsg:26910'
-# PRES = 1e-5
-# E_THRES = 5
-# BUFF_DIS = 2
-
 def bounding_box_from_gdf(gdf):
     # Get the bounding box coordinates directly from the GeoDataFrame
     min_x, min_y, max_x, max_y = gdf.total_bounds

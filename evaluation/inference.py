@@ -324,21 +324,18 @@ def load_inference_config(path: str):
 
 if __name__ == "__main__":
     logs = [
-        # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
-        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260207_231140/",
-        
-        "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/",
-        "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154110_0.4_cont/",
-        "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_234446_0.6_cont/",
-        "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154830_0.8_cont/",
-        "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/",
-        "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_002621_0.2/",
-        "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112255_0.4/",
-        "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112349_0.6/",
-        "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260215_121343_0.8/",
-        "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_001501/",
+        # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/",
+        # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154110_0.4_cont/",
+        # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_234446_0.6_cont/",
+        # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154830_0.8_cont/",
+        # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/",
+        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_002621_0.2/",
+        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112255_0.4/",
+        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112349_0.6/",
+        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260215_121343_0.8/",
+        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260216_103042_cont/'
     ]
-    models = ["swin_tiny_20", "swin_tiny_40", "swin_tiny_60", "swin_tiny_80", "swin_tiny"] * 2
+    # models = ["swin_tiny_20", "swin_tiny_40", "swin_tiny_60", "swin_tiny_80", "swin_tiny"] * 2
     
     datasets = [
         {
@@ -347,12 +344,12 @@ if __name__ == "__main__":
             "test_txt":  "/data/aiclinic/pathways/generation_full_data/test.txt",
             "out_root":  "/data/models/bin/2026_pathway_generation/predictions/",
         },
-        {
-            "name": "pathwaybench_seattle",
-            "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
-            "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-        }
+        # {
+        #     "name": "pathwaybench_seattle",
+        #     "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
+        #     "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+        #     "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+        # }
     ]
 
     use_ddp = ("WORLD_SIZE" in os.environ) and (int(os.environ["WORLD_SIZE"]) > 1)
@@ -401,11 +398,14 @@ if __name__ == "__main__":
                 print("Model:", model_name, "| tag:", tag, "| world_size:", world_size)
                 print("-" * 50)
 
-            # load model weights once per (run_dir, model_name)
-            
+            # load model weights once per (run_dir, model_name)            
             if model_name in ['swin_tiny_20', 'swin_tiny_40', 'swin_tiny_60', 'swin_tiny_80']:
                 m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
                 m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
+                m.eval()
+            elif model_name in ['swin_tiny_40_old', 'swin_tiny_60_old', 'swin_tiny_80_old', 'swin_tiny_old']:
+                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
+                m.load_state_dict(torch.load(os.path.join(run_dir, "model_last.pth"), map_location=device))
                 m.eval()
             else:
                 m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name).to(device)

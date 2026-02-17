@@ -226,7 +226,7 @@ if __name__ == "__main__":
             "name": "generation_full_data",
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
             "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_{M.PROJ}_{M.BUFF_DIS}.csv",
+            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_old.csv",
         },
         # {
         #     "name": "pathwaybench_seattle",
@@ -277,6 +277,9 @@ if __name__ == "__main__":
 
         for model_name in sorted(os.listdir(pred_root)):
             
+            if 'old' not in model_name:
+                continue
+
             if model_name.startswith("_"):
                 continue
 

@@ -18,10 +18,10 @@ CONFIG = {
     'output_size':            (256, 256),
     
     # GRPO Training Hyperparams
-    'num_epochs':             9,
+    'num_epochs':             15,
     'grad_accum':             8,
     'lr':                     3e-5,
-    'weight_decay':           1e-4,        
+    'weight_decay':           1e-4,
     'grad_clip':              1.0,
     'kl_beta':                0.05,
     'graphs_per_epoch':       None,
@@ -40,9 +40,8 @@ CONFIG = {
 
 REFERENCE_DIRS = {
     "swin_tiny_0.2":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/",
-    "swin_tiny_0.4":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154110_0.4_cont/",
-    "swin_tiny_0.6":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_234446_0.6_cont/",
-    "swin_tiny_0.8":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154830_0.8_cont/",
-    "swin_tiny":      "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/",
-    "swin_tiny_cont": "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_001501/",
+    "swin_tiny_0.4":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_152110_0.4/",
+    "swin_tiny_0.6":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_103706_0.6/",
+    "swin_tiny_0.8":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_221908_0.8/",
+    "swin_tiny":      "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/"
 }
