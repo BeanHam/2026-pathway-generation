@@ -226,14 +226,14 @@ if __name__ == "__main__":
             "name": "generation_full_data",
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
             "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_csv": "/data/models/bin/2026_pathway_generation/predictions/evaluation_results.csv",
+            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_{M.PROJ}_{M.BUFF_DIS}.csv",
         },
-        {
-            "name": "pathwaybench_seattle",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-            "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results.csv",
-        },
+        # {
+        #     "name": "pathwaybench_seattle",
+        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+        #     "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+        #     "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results.csv",
+        # },
     ]
 
     seeds = 1
@@ -254,7 +254,7 @@ if __name__ == "__main__":
         with open(split_path, "r") as f:
             split_indices = [line.strip() for line in f if line.strip()]
 
-        cache_dir = os.path.join(pred_root, f"_gt_cache_{M.PROJ}")
+        cache_dir = os.path.join(pred_root, f"_gt_cache_{M.PROJ}_{M.BUFF_DIS}")
         if not os.path.isdir(cache_dir):
             print(f"[SKIP] cache_dir not found (run evaluation_cache.py first): {cache_dir}")
             continue
