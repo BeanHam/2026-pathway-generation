@@ -18,7 +18,7 @@ CONFIG = {
     'output_size':            (256, 256),
     
     # GRPO Training Hyperparams
-    'num_epochs':             15,
+    'num_epochs':             10,
     'grad_accum':             8,
     'lr':                     3e-5,
     'weight_decay':           1e-4,
@@ -36,6 +36,9 @@ CONFIG = {
     # Sampling Parameters (Tunable)
     'seed_strategy':          'gt_random',          
     'seeds_per_graph':        1,
+    
+    # continue training from checkpoint
+    'resume_dir':             '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260217_102252/'
 }
 
 REFERENCE_DIRS = {

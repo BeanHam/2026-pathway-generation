@@ -7,3 +7,4 @@ inference/
 __pycache__/
 .ipynb_checkpoints/
 predictions/
+visualizations/

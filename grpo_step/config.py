@@ -10,7 +10,7 @@ CONFIG = {
     'step_advantages':        True,
     'step_iou_stride':        1,
     'step_iou_max_edges':     100,
-    'adv_std_floor':          1e-2,
+    'adv_std_floor':          1e-3,
 
     # Model Params
     'model':                  "resnet18",
@@ -45,7 +45,5 @@ CONFIG = {
 }
 
 REFERENCE_DIRS = {
-    "resnet18":   "/data/models/bin/2026_pathway_generation/reference_logs/resnet18_ddp_graph_20260209_121921/",
-    "resnet50":   "/data/models/bin/2026_pathway_generation/reference_logs/resnet50_ddp_graph_20260209_004201/",
     "swin_tiny":  "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
 }
