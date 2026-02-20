@@ -4,6 +4,7 @@ import torch
 import argparse
 import torch.distributed as dist
 from datetime import timedelta
+
 from utils import grpo_train_main
 from config import CONFIG, REFERENCE_DIRS
 
@@ -27,7 +28,6 @@ if __name__ == "__main__":
     parser.add_argument("--fp_lambda", type=float, default=0.0)
     args = parser.parse_args()
 
-    # detect DDP
     use_ddp = ("WORLD_SIZE" in os.environ) and (int(os.environ["WORLD_SIZE"]) > 1)
     if use_ddp:
         local_rank, rank, world_size = ddp_setup()
@@ -36,25 +36,22 @@ if __name__ == "__main__":
         rank, world_size = 0, 1
         device = args.device
 
-    # config
     CONFIG["model"] = args.model
     if CONFIG["model"].startswith("vit"):
         CONFIG["output_size"] = (224, 224)
     CONFIG["device"] = device
     CONFIG["fp_lambda"] = float(args.fp_lambda)
 
-    # checkpoint paths
     reference_path = REFERENCE_DIRS[args.model]
     CONFIG["init_ckpt"] = os.path.join(reference_path, "model_best.pth")
     with open(os.path.join(reference_path, "inference_config.json"), "r") as f:
         inference_config = json.load(f)
 
-    CONFIG["topk"]                = inference_config["topk"]
-    CONFIG["restarts_per_graph"]  = inference_config.get("restarts_per_graph", 1)  # kept for compatibility
-    CONFIG["stop_prob_thresh"]    = inference_config["stop_prob_thresh"]
+    CONFIG["topk"] = inference_config["topk"]
+    CONFIG["restarts_per_graph"] = inference_config.get("restarts_per_graph", 1)
+    CONFIG["stop_prob_thresh"] = inference_config["stop_prob_thresh"]
     CONFIG["max_expand_per_node"] = inference_config["max_expand_per_node"]
 
-    # train
     grpo_train_main(CONFIG, ddp_rank=rank, ddp_world_size=world_size)
 
     if use_ddp:

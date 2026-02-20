@@ -19,6 +19,7 @@ from shapely.geometry import LineString
 
 from model import PathwayModel
 
+
 # ============================================================
 # Repro / BN helpers
 # ============================================================
@@ -35,6 +36,7 @@ def freeze_bn(m):
 
 def should_freeze_bn(model_name: str) -> bool:
     return model_name.lower().startswith("resnet")
+
 
 # ============================================================
 # Cached loaders (per-process cache)
@@ -57,9 +59,10 @@ def _mean_std_4(device):
     std  = torch.tensor([0.229, 0.224, 0.225, 1.0], device=device).view(1, 4, 1, 1)
     return mean, std
 
-# ==========================================
-# Cropping Image
-# ==========================================
+
+# ============================================================
+# Cropping
+# ============================================================
 def crop_image(img_arr, center, crop_size=0.5, output_size=(256, 256)):
     H, W = img_arr.shape[:2]
     cx_norm, cy_norm = center
@@ -136,8 +139,8 @@ class IterativeEncoder:
 # ============================================================
 # Geometry IoU reward: buffered union IoU between two edge sets
 # ============================================================
-GT_BUF_CACHE = {}     # (folder_idx, buffer_radius) -> geometry or None
-GT_EDGES_CACHE = {}   # folder_idx -> edges_xy
+GT_BUF_CACHE = {}
+GT_EDGES_CACHE = {}
 
 def gt_graph_to_edges_xy(G):
     return [(tuple(u), tuple(v)) for (u, v) in G.edges]
@@ -207,7 +210,6 @@ def shaped_reward_option_a(stats, fp_lambda: float, eps: float = 1e-12):
 # Rollout env helpers
 # ============================================================
 def node_to_px(xy, H, W):
-    # robust pixel conversion
     x, y = xy
     px = int(np.clip(x * (W - 1), 0, W - 1))
     py = int(np.clip((1 - y) * (H - 1), 0, H - 1))
@@ -265,7 +267,6 @@ def rollout_collect_actions(
     topk=5,
     temperature=1.0,
     stop_prob_thresh=0.5,
-    # step reward extras
     step_advantages=False,
     gt_buf=None,
     buffer_radius=0.01,
@@ -315,12 +316,10 @@ def rollout_collect_actions(
 
             logits_s = logits / max(float(temperature), 1e-8)
 
-            # STOP veto
             if stop_prob < stop_prob_thresh:
                 logits_s = logits_s.clone()
                 logits_s[stop_idx] = -1e9
 
-            # mask already-used bins at this node
             if used_actions:
                 logits_s = logits_s.clone()
                 logits_s[list(used_actions)] = -1e9
@@ -328,7 +327,6 @@ def rollout_collect_actions(
             if torch.max(logits_s).item() <= -1e8:
                 break
 
-            # choose action
             if topk == 1:
                 a_idx = int(torch.argmax(logits_s).item())
             else:
@@ -345,7 +343,6 @@ def rollout_collect_actions(
             if step_advantages:
                 step_rewards.append(0.0)
 
-            # STOP ends this node
             if a_idx == stop_idx:
                 break
 
@@ -370,20 +367,18 @@ def rollout_collect_actions(
             edges_xy.append((u_pos, new_pos))
             steps_used += 1
 
-            # step reward update (after committing edge)
             if step_advantages and (gt_buf is not None) and (len(edges_xy) <= max_edges):
                 pending_action_idxs.append(len(actions) - 1)
                 if (len(edges_xy) % stride) == 0:
                     pred_buf_t = buffered_union_from_edges(edges_xy, buffer_radius)
                     iou_t = overlap_stats_from_unions(gt_buf, pred_buf_t)["iou"]
-                    d_iou = float(iou_t) - float(prev_iou)  # signed
+                    d_iou = float(iou_t) - float(prev_iou)
                     per = d_iou / float(len(pending_action_idxs))
                     for j in pending_action_idxs:
                         step_rewards[j] += per
                     pending_action_idxs.clear()
                     prev_iou = float(iou_t)
 
-    # flush remaining pending rewards
     if step_advantages and (gt_buf is not None) and pending_action_idxs:
         pred_buf_t = buffered_union_from_edges(edges_xy, buffer_radius)
         iou_t = overlap_stats_from_unions(gt_buf, pred_buf_t)["iou"]
@@ -396,10 +391,8 @@ def rollout_collect_actions(
 
     out = {"edges_xy": edges_xy, "actions": actions}
     if step_advantages:
-        # always return aligned list (can be all-zeros if gt_buf is None)
         assert len(step_rewards) == len(actions), (len(step_rewards), len(actions))
         out["step_rewards"] = step_rewards
-
     return out
 
 # ============================================================
@@ -437,7 +430,7 @@ def replay_actions_backward(
     CONFIG,
     mean4, std4,
     actions,
-    advantages_seq,      # np.ndarray / list, same length as actions
+    advantages_seq,
     kl_beta: float,
     seed_strategy="random",
     seeds_per_graph=1,
@@ -454,7 +447,6 @@ def replay_actions_backward(
     device = CONFIG["device"]
     rng = random.Random(rng_seed)
 
-    # IMPORTANT: never sync on per-step backward
     ddp_set_sync(policy_model, False)
 
     canvas = np.zeros((H, W), dtype=np.uint8)
@@ -474,17 +466,16 @@ def replay_actions_backward(
 
     act_ptr = 0
 
-    pg_loss_sum = 0.0
-    kl_loss_sum = 0.0
-    total_loss_sum = 0.0
-
     kl_raw_sum = 0.0
     entropy_sum = 0.0
     stop_prob_sum = 0.0
-
     action_count = 0
     stop_count = 0
     stop_idx = int(CONFIG["stop_class_idx"])
+
+    pg_loss_sum = 0.0
+    kl_loss_sum = 0.0
+    total_loss_sum = 0.0
 
     while stack and steps_used < max_global_steps and act_ptr < len(actions):
         u_id = stack.pop()
@@ -501,8 +492,7 @@ def replay_actions_backward(
                 break
 
             x = build_input_tensor(satellite_img, canvas, u_pos, CONFIG, device, mean4, std4)
-
-            logits = policy_model(x)[0]  # grad flows
+            logits = policy_model(x)[0]
             with torch.no_grad():
                 logits_ref = ref_model(x)[0]
 
@@ -516,13 +506,11 @@ def replay_actions_backward(
 
             logp_all = F.log_softmax(logits, dim=0)
             p_all = torch.exp(logp_all)
-
             with torch.no_grad():
                 logp_ref_all = F.log_softmax(logits_ref, dim=0)
 
-            kl_raw = torch.sum(p_all * (logp_all - logp_ref_all))  # KL(pi || ref)
+            kl_raw = torch.sum(p_all * (logp_all - logp_ref_all))
             entropy = -torch.sum(p_all * logp_all)
-
             logp_a = logp_all[a_idx]
 
             pg_term = (-A_t * invT) * logp_a
@@ -560,7 +548,6 @@ def replay_actions_backward(
 
             px_v = node_to_px(new_pos, H, W)
             cv2.line(canvas, px_u, px_v, color=255, thickness=2, lineType=cv2.LINE_AA)
-
             steps_used += 1
 
     mean_kl_raw = (kl_raw_sum / action_count) if action_count > 0 else 0.0
@@ -605,15 +592,25 @@ def allreduce_mean(x: float, device):
 # Main GRPO Training Loop (DDP-compatible)
 # ============================================================
 def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
-    set_seed(CONFIG["seed"] + ddp_rank)
     device = CONFIG["device"]
     use_ddp = dist.is_available() and dist.is_initialized()
 
+    # Trust process group rank/world_size if DDP is on
+    if use_ddp:
+        ddp_rank = dist.get_rank()
+        ddp_world_size = dist.get_world_size()
+        local_rank = int(os.environ["LOCAL_RANK"])
+    else:
+        local_rank = None
+
+    # Seed AFTER ddp_rank is correct
+    set_seed(CONFIG["seed"] + ddp_rank)
+
     # indices
     with open(CONFIG["train_index"], "r") as f:
-        train_all = [line.strip() for line in f]
+        train_all = [line.strip() for line in f if line.strip()]
     with open(CONFIG["val_index"], "r") as f:
-        val_indices = [line.strip() for line in f]
+        val_indices = [line.strip() for line in f if line.strip()]
 
     # run dir only on rank0
     if ddp_rank == 0:
@@ -633,6 +630,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
 
     best_path = os.path.join(run_dir, "model_best.pth")
     last_path = os.path.join(run_dir, "model_last.pth")
+    opt_last_path = os.path.join(run_dir, "optimizer_last.pth")
 
     # models
     policy = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=CONFIG["model"]).to(device)
@@ -650,9 +648,13 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
 
     # DDP wrap policy
     if use_ddp:
-        local_rank = int(os.environ["LOCAL_RANK"])
-        policy = DDP(policy, device_ids=[local_rank], output_device=local_rank,
-                     broadcast_buffers=False, find_unused_parameters=False)
+        policy = DDP(
+            policy,
+            device_ids=[local_rank],
+            output_device=local_rank,
+            broadcast_buffers=False,
+            find_unused_parameters=False,
+        )
 
     if should_freeze_bn(CONFIG["model"]):
         policy.apply(freeze_bn)
@@ -661,9 +663,9 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
     optimizer = optim.AdamW(policy.parameters(), lr=CONFIG["lr"], weight_decay=CONFIG["weight_decay"])
     mean4, std4 = _mean_std_4(device)
 
-    # history (rank0 only really writes)
     history = {
-        "train_iou": [], "val_iou": [],
+        "train_iou": [],
+        "val_iou": [],
         "train_reward": [],
         "train_kl_raw_mean": [],
         "train_entropy_mean": [],
@@ -672,14 +674,14 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
 
     step_advantages = bool(CONFIG.get("step_advantages", False))
     std_floor = float(CONFIG.get("adv_std_floor", 1e-3))
+    eps = 1e-8
 
     for epoch in range(CONFIG["num_epochs"]):
-        # shard train list
         rng = random.Random(CONFIG["seed"] + epoch)
         shuffled = train_all[:]
         rng.shuffle(shuffled)
 
-        if CONFIG["graphs_per_epoch"] is not None:
+        if CONFIG.get("graphs_per_epoch") is not None:
             shuffled = shuffled[: CONFIG["graphs_per_epoch"]]
 
         if use_ddp:
@@ -688,160 +690,149 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
         else:
             train_indices = shuffled
 
-        # train mode
         policy.train()
         if should_freeze_bn(CONFIG["model"]):
             policy.apply(freeze_bn)
 
         if ddp_rank == 0:
-            pbar = tqdm(train_indices, desc=f"GRPO-step {epoch+1}/{CONFIG['num_epochs']} (rank0)")
+            pbar = tqdm(train_indices, desc=f"GRPO-RTG {epoch+1}/{CONFIG['num_epochs']} (rank0)")
         else:
             pbar = train_indices
 
         optimizer.zero_grad(set_to_none=True)
         update_count = 0
 
-        # epoch accumulators (local)
         e_iou, e_reward, e_klraw, e_ent = [], [], [], []
 
         for folder_idx in pbar:
-            # load cached
-            G_gt, sat = _load_graph_and_sat(CONFIG["data_root"], str(folder_idx), sat_name="satellite.png")
-            gt_nodes = list(G_gt.nodes)
-            H, W = sat.shape[:2]
-            gt_buf = get_gt_buf_cached(folder_idx, G_gt, CONFIG["buffer_radius"])
+            try:
+                G_gt, sat = _load_graph_and_sat(CONFIG["data_root"], str(folder_idx), sat_name="satellite.png")
+                gt_nodes = list(G_gt.nodes)
+                H, W = sat.shape[:2]
+                gt_buf = get_gt_buf_cached(folder_idx, G_gt, CONFIG["buffer_radius"])
 
-            # ---- rollouts (no grad) ----
-            policy.eval()
-            if should_freeze_bn(CONFIG["model"]):
-                policy.apply(freeze_bn)
+                # ---- rollouts (no grad) ----
+                policy.eval()
+                if should_freeze_bn(CONFIG["model"]):
+                    policy.apply(freeze_bn)
 
-            rollouts = []
-            rollout_stats = []
-            rewards = []
+                rollouts, rollout_stats, rewards = [], [], []
+                for k in range(CONFIG["K"]):
+                    traj = rollout_collect_actions(
+                        satellite_img=sat, H=H, W=W,
+                        policy_model=policy,
+                        encoder=encoder,
+                        CONFIG=CONFIG,
+                        mean4=mean4, std4=std4,
+                        seed_strategy=CONFIG["seed_strategy"],
+                        seeds_per_graph=CONFIG["seeds_per_graph"],
+                        rng_seed=(CONFIG["seed"] + epoch * 100000 + k * 1000 + int(folder_idx)),
+                        gt_nodes=gt_nodes,
+                        max_global_steps=CONFIG["max_global_steps"],
+                        max_expand_per_node=CONFIG["max_expand_per_node"],
+                        topk=CONFIG["topk"],
+                        temperature=CONFIG["temperature"],
+                        stop_prob_thresh=CONFIG["stop_prob_thresh"],
+                        step_advantages=step_advantages,
+                        gt_buf=gt_buf,
+                        buffer_radius=CONFIG["buffer_radius"],
+                    )
 
-            for k in range(CONFIG["K"]):
-                traj = rollout_collect_actions(
-                    satellite_img=sat, H=H, W=W,
-                    policy_model=policy,
-                    encoder=encoder,
-                    CONFIG=CONFIG,
-                    mean4=mean4, std4=std4,
-                    seed_strategy=CONFIG["seed_strategy"],
-                    seeds_per_graph=CONFIG["seeds_per_graph"],
-                    rng_seed=(CONFIG["seed"] + epoch * 100000 + k * 1000 + int(folder_idx)),
-                    gt_nodes=gt_nodes,
-                    max_global_steps=CONFIG["max_global_steps"],
-                    max_expand_per_node=CONFIG["max_expand_per_node"],
-                    topk=CONFIG["topk"],
-                    temperature=CONFIG["temperature"],
-                    stop_prob_thresh=CONFIG["stop_prob_thresh"],
-                    step_advantages=step_advantages,
-                    gt_buf=gt_buf,
-                    buffer_radius=CONFIG["buffer_radius"],
-                )
+                    pred_buf = buffered_union_from_edges(traj["edges_xy"], CONFIG["buffer_radius"])
+                    stats = overlap_stats_from_unions(gt_buf, pred_buf)
+                    reward, _, _ = shaped_reward_option_a(stats, CONFIG["fp_lambda"])
 
-                pred_buf = buffered_union_from_edges(traj["edges_xy"], CONFIG["buffer_radius"])
-                stats = overlap_stats_from_unions(gt_buf, pred_buf)
-                reward, _, _ = shaped_reward_option_a(stats, CONFIG["fp_lambda"])
+                    rollouts.append(traj)
+                    rollout_stats.append(stats)
+                    rewards.append(reward)
 
-                rollouts.append(traj)
-                rollout_stats.append(stats)
-                rewards.append(reward)
+                # ---- RTG per-step advantages across K ----
+                returns_list = []
+                T_list = []
+                for out in rollouts:
+                    if not step_advantages:
+                        r = np.zeros(len(out["actions"]), dtype=np.float32)
+                    else:
+                        r = out.get("step_rewards", None)
+                        if r is None:
+                            raise RuntimeError("Missing step_rewards in rollout output.")
+                        if len(r) != len(out["actions"]):
+                            raise RuntimeError(f"step_rewards len {len(r)} != actions len {len(out['actions'])}")
+                        r = np.asarray(r, dtype=np.float32)
 
-            # ---- compute per-step advantages (group baseline across K) ----
-            # returns_list[k] is G_t (returns-to-go) for rollout k
-            returns_list = []
-            T_list = []
+                    G = np.cumsum(r[::-1])[::-1]  # RTG
+                    returns_list.append(G)
+                    T_list.append(len(G))
 
-            for out in rollouts:
-                if not step_advantages:
-                    # fallback if disabled (shouldn't happen for step run)
-                    r = np.zeros(len(out["actions"]), dtype=np.float32)
-                else:
-                    r = out.get("step_rewards", None)
-                    if r is None:
-                        raise RuntimeError("Missing step_rewards in rollout output.")
-                    if len(r) != len(out["actions"]):
-                        raise RuntimeError(f"step_rewards len {len(r)} != actions len {len(out['actions'])}")
-                    r = np.asarray(r, dtype=np.float32)
+                maxT = max(T_list) if T_list else 1
+                means = np.zeros(maxT, dtype=np.float32)
+                stds  = np.zeros(maxT, dtype=np.float32)
 
-                G = np.cumsum(r[::-1])[::-1]  # returns-to-go, gamma=1
-                returns_list.append(G)
-                T_list.append(len(G))
+                for t in range(maxT):
+                    vals = [G[t] for G in returns_list if len(G) > t]
+                    if not vals:
+                        means[t] = 0.0
+                        stds[t] = 1.0
+                    else:
+                        vals = np.asarray(vals, dtype=np.float32)
+                        means[t] = float(vals.mean())
+                        stds[t]  = max(float(vals.std()), std_floor)
 
-            maxT = max(T_list) if T_list else 1
-            means = np.zeros(maxT, dtype=np.float32)
-            stds  = np.zeros(maxT, dtype=np.float32)
+                advantages_list = []
+                for G in returns_list:
+                    T = len(G)
+                    A = (G - means[:T]) / (stds[:T] + eps)
+                    advantages_list.append(A.astype(np.float32))
 
-            for t in range(maxT):
-                vals = [G[t] for G in returns_list if len(G) > t]
-                if not vals:
-                    means[t] = 0.0
-                    stds[t] = 1.0
-                else:
-                    vals = np.asarray(vals, dtype=np.float32)
-                    means[t] = float(vals.mean())
-                    stds[t]  = max(float(vals.std()), std_floor)
+                # ---- replay with grad (DDP sync OFF inside replay) ----
+                policy.eval()
+                if should_freeze_bn(CONFIG["model"]):
+                    policy.apply(freeze_bn)
 
-            eps = 1e-8
-            advantages_list = []
-            for G in returns_list:
-                T = len(G)
-                A = (G - means[:T]) / (stds[:T] + eps)
-                advantages_list.append(A.astype(np.float32))
+                replay_kls, replay_ents = [], []
+                for k, out in enumerate(rollouts):
+                    rep = replay_actions_backward(
+                        satellite_img=sat, H=H, W=W,
+                        policy_model=policy,
+                        ref_model=ref,
+                        encoder=encoder,
+                        CONFIG=CONFIG,
+                        mean4=mean4, std4=std4,
+                        actions=out["actions"],
+                        advantages_seq=advantages_list[k],
+                        kl_beta=CONFIG["kl_beta"],
+                        seed_strategy=CONFIG["seed_strategy"],
+                        seeds_per_graph=CONFIG["seeds_per_graph"],
+                        rng_seed=(CONFIG["seed"] + epoch * 100000 + k * 1000 + int(folder_idx)),
+                        gt_nodes=gt_nodes,
+                        max_global_steps=CONFIG["max_global_steps"],
+                        max_expand_per_node=CONFIG["max_expand_per_node"],
+                        temperature=CONFIG["temperature"],
+                        stop_prob_thresh=CONFIG["stop_prob_thresh"],
+                    )
+                    replay_kls.append(rep["kl_raw_mean"])
+                    replay_ents.append(rep["entropy_mean"])
 
-            # ---- replay with grad (DDP sync OFF) ----
-            policy.eval()
-            if should_freeze_bn(CONFIG["model"]):
-                policy.apply(freeze_bn)
+                policy.train()
+                if should_freeze_bn(CONFIG["model"]):
+                    policy.apply(freeze_bn)
 
-            replay_kls = []
-            replay_ents = []
+                g_iou = float(np.mean([s["iou"] for s in rollout_stats]))
+                g_reward = float(np.mean(np.asarray(rewards, dtype=np.float32)))
+                g_klraw = float(np.mean(replay_kls)) if replay_kls else 0.0
+                g_ent = float(np.mean(replay_ents)) if replay_ents else 0.0
 
-            for k, out in enumerate(rollouts):
-                rep = replay_actions_backward(
-                    satellite_img=sat, H=H, W=W,
-                    policy_model=policy,
-                    ref_model=ref,
-                    encoder=encoder,
-                    CONFIG=CONFIG,
-                    mean4=mean4, std4=std4,
-                    actions=out["actions"],
-                    advantages_seq=advantages_list[k],
-                    kl_beta=CONFIG["kl_beta"],
-                    seed_strategy=CONFIG["seed_strategy"],
-                    seeds_per_graph=CONFIG["seeds_per_graph"],
-                    rng_seed=(CONFIG["seed"] + epoch * 100000 + k * 1000 + int(folder_idx)),
-                    gt_nodes=gt_nodes,
-                    max_global_steps=CONFIG["max_global_steps"],
-                    max_expand_per_node=CONFIG["max_expand_per_node"],
-                    temperature=CONFIG["temperature"],
-                    stop_prob_thresh=CONFIG["stop_prob_thresh"],
-                )
-                replay_kls.append(rep["kl_raw_mean"])
-                replay_ents.append(rep["entropy_mean"])
-
-            # restore train mode
-            policy.train()
-            if should_freeze_bn(CONFIG["model"]):
-                policy.apply(freeze_bn)
-
-            # local logs
-            g_iou = float(np.mean([s["iou"] for s in rollout_stats]))
-            g_reward = float(np.mean(np.asarray(rewards, dtype=np.float32)))
-            g_klraw = float(np.mean(replay_kls)) if replay_kls else 0.0
-            g_ent = float(np.mean(replay_ents)) if replay_ents else 0.0
+            except Exception as e:
+                # keep ranks aligned even if one tile fails
+                if ddp_rank == 0:
+                    print(f"[WARN] idx={folder_idx} failed: {type(e).__name__}: {e}")
+                g_iou, g_reward, g_klraw, g_ent = 0.0, 0.0, 0.0, 0.0
 
             e_iou.append(g_iou); e_reward.append(g_reward); e_klraw.append(g_klraw); e_ent.append(g_ent)
 
             update_count += 1
-            do_step = (update_count % CONFIG["grad_accum"] == 0)
-
-            if do_step:
-                # ONE DDP sync here (aggregates all local grads)
+            if (update_count % CONFIG["grad_accum"]) == 0:
                 ddp_sync_grads_with_dummy_backward(policy)
-
                 torch.nn.utils.clip_grad_norm_(policy.parameters(), max_norm=CONFIG["grad_clip"])
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
@@ -861,7 +852,10 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
 
-        # aggregate epoch means across ranks
+        # --- CRITICAL: barrier BEFORE allreduce ---
+        if use_ddp:
+            dist.barrier(device_ids=[local_rank])
+
         train_iou = float(np.mean(e_iou)) if e_iou else 0.0
         train_reward = float(np.mean(e_reward)) if e_reward else 0.0
         train_klraw = float(np.mean(e_klraw)) if e_klraw else 0.0
@@ -878,11 +872,10 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
             history["train_kl_raw_mean"].append(train_klraw)
             history["train_entropy_mean"].append(train_ent)
 
-        # barrier before validation
         if use_ddp:
-            dist.barrier()
+            dist.barrier(device_ids=[local_rank])
 
-        # validation only on rank0
+        # ---------------- val on rank0 ----------------
         if ddp_rank == 0:
             policy.eval()
             if should_freeze_bn(CONFIG["model"]):
@@ -892,7 +885,6 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
             v_iou = []
             for folder_idx in val_subset:
                 G_gt, sat = _load_graph_and_sat(CONFIG["data_root"], str(folder_idx), sat_name="satellite.png")
-                gt_nodes = list(G_gt.nodes)
                 H, W = sat.shape[:2]
                 gt_buf = get_gt_buf_cached(folder_idx, G_gt, CONFIG["buffer_radius"])
 
@@ -905,7 +897,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                     seed_strategy=CONFIG["seed_strategy"],
                     seeds_per_graph=CONFIG["seeds_per_graph"],
                     rng_seed=(CONFIG["seed"] + epoch * 999 + int(folder_idx)),
-                    gt_nodes=gt_nodes,
+                    gt_nodes=list(G_gt.nodes),
                     max_global_steps=CONFIG["max_global_steps"],
                     max_expand_per_node=CONFIG["max_expand_per_node"],
                     topk=CONFIG["topk"],
@@ -926,18 +918,17 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
             with open(os.path.join(run_dir, "history.json"), "w") as f:
                 json.dump(history, f, indent=2)
 
-            # save last
             state = policy.module.state_dict() if _is_ddp(policy) else policy.state_dict()
             torch.save(state, last_path)
+            torch.save(optimizer.state_dict(), os.path.join(run_dir, "optimizer_last.pth"))
 
-            # save best
             if avg_val_iou > best_val_iou:
                 best_val_iou = avg_val_iou
                 torch.save(state, best_path)
                 print(f"  [+] New Best Model! val_iou={best_val_iou:.4f}")
 
         if use_ddp:
-            dist.barrier()
+            dist.barrier(device_ids=[local_rank])
 
     if ddp_rank == 0:
-        print("GRPO-step training complete. Saved to:", run_dir)
+        print("GRPO-immediate training complete. Saved to:", run_dir)

@@ -1140,7 +1140,6 @@ def grpo_train_main_proportion(CONFIG, ddp_rank=0, ddp_world_size=1):
 # Main GRPO Training Loop
 # ============================================================
 def grpo_train_main_cont(CONFIG, ddp_rank=0, ddp_world_size=1):
-    set_seed(CONFIG["seed"] + ddp_rank)
     device = CONFIG["device"]
     use_ddp = dist.is_available() and dist.is_initialized()
 
@@ -1152,6 +1151,8 @@ def grpo_train_main_cont(CONFIG, ddp_rank=0, ddp_world_size=1):
     else:
         local_rank = None
 
+    set_seed(CONFIG["seed"] + ddp_rank)
+    
     # indices
     with open(CONFIG["train_index"], "r") as f:
         train_all = [line.strip() for line in f if line.strip()]

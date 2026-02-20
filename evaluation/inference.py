@@ -324,18 +324,30 @@ def load_inference_config(path: str):
 
 if __name__ == "__main__":
     logs = [
+        # ------------------------------
+        # reference (best checkpoints)
+        # ------------------------------
+        # '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
+        # '/data/models/bin/2026_pathway_generation/reference_logs/vit_small_20260217_102936/',
+        # '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/",
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154110_0.4_cont/",
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_234446_0.6_cont/",
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154830_0.8_cont/",
-        # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/",
+        
+        # ------------------------------
+        # grpo (best checkpoints)
+        # ------------------------------
+        '/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260218_230403/',
+        '/data/models/bin/2026_pathway_generation/grpo_logs/vit_small_20260218_230534/',
+        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260218_142801_cont/',
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_002621_0.2/",
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112255_0.4/",
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112349_0.6/",
-        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260215_121343_0.8/",
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260216_103042_cont/'
+        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260215_121343_0.8/",        
     ]
-    # models = ["swin_tiny_20", "swin_tiny_40", "swin_tiny_60", "swin_tiny_80", "swin_tiny"] * 2
+    # models = ["resnet18", "vit_small", "swin_tiny"]
+    models = ["resnet18_last", "vit_small_last"]
     
     datasets = [
         {
@@ -344,12 +356,12 @@ if __name__ == "__main__":
             "test_txt":  "/data/aiclinic/pathways/generation_full_data/test.txt",
             "out_root":  "/data/models/bin/2026_pathway_generation/predictions/",
         },
-        # {
-        #     "name": "pathwaybench_seattle",
-        #     "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
-        #     "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-        #     "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-        # }
+        {
+            "name": "pathwaybench_seattle",
+            "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
+            "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+        }
     ]
 
     use_ddp = ("WORLD_SIZE" in os.environ) and (int(os.environ["WORLD_SIZE"]) > 1)
@@ -403,8 +415,12 @@ if __name__ == "__main__":
                 m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
                 m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
                 m.eval()
-            elif model_name in ['swin_tiny_40_old', 'swin_tiny_60_old', 'swin_tiny_80_old', 'swin_tiny_old']:
-                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
+            elif model_name in ['resnet18_last']:
+                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='resnet18').to(device)
+                m.load_state_dict(torch.load(os.path.join(run_dir, "model_last.pth"), map_location=device))
+                m.eval()
+            elif model_name in ['vit_small_last']:
+                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='vit_small').to(device)
                 m.load_state_dict(torch.load(os.path.join(run_dir, "model_last.pth"), map_location=device))
                 m.eval()
             else:
@@ -415,7 +431,7 @@ if __name__ == "__main__":
                 m.apply(freeze_bn)
 
             # seeds
-            for seed in range(1):
+            for seed in range(5):
                 out_dir = os.path.join(out_root, model_name, tag, f"seed_{seed}")
                 os.makedirs(out_dir, exist_ok=True)
 
