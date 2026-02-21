@@ -3,18 +3,20 @@ CONFIG = {
     'data_root':              '/data/aiclinic/pathways/generation_full_data/pairs/',
     'train_index':            '/data/aiclinic/pathways/generation_full_data/train.txt',
     'val_index':              '/data/aiclinic/pathways/generation_full_data/val.txt',
-    'save_path':              '/data/models/bin/2026_pathway_generation/grpo_logs_steps/',
+    'save_path':              '/data/models/bin/2026_pathway_generation/grpo_logs_steps_multiplicative/',
     'seed':                   0,
             
     # Step-wise credit assignment
     'step_advantages':        True,
     'step_iou_stride':        1,
     'step_iou_max_edges':     100,
+
+    # Multiplicative Update Hyperparameters
     'shape_alpha':            0.1,
     'local_clip':             2.0,
     'local_std_floor':        1e-2,
     'mult_min':               0.0,
-    'mult_max':               2.0,
+    'mult_max':               3.0,
     'global_adv_clip':        5.0,
 
     # debug

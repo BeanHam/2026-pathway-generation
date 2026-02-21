@@ -744,11 +744,10 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                     r = np.zeros((T,), dtype=np.float32)
 
                 # within-rollout centering + scaling
-                mu = float(r.mean()) if T > 0 else 0.0
                 sd = float(r.std())
                 sd = max(sd, local_std_floor)
 
-                r_norm = (r - mu) / (sd + 1e-8)
+                r_norm = r / (sd + 1e-8)
                 r_norm = np.clip(r_norm, -local_clip, local_clip)
 
                 mult = 1.0 + alpha * r_norm
@@ -774,7 +773,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                     sd = float(r_dbg.std()) if T_dbg > 0 else 0.0
                     sd_eff = max(sd, float(CONFIG.get("local_std_floor", 1e-2)))
 
-                    r_norm = (r_dbg - mu) / (sd_eff + 1e-8)
+                    r_norm = r_dbg / (sd_eff + 1e-8)
                     local_clip = float(CONFIG.get("local_clip", 2.0))
                     r_norm_clip = np.clip(r_norm, -local_clip, local_clip)
 
