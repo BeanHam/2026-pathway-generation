@@ -582,7 +582,7 @@ def allreduce_mean(x: float, device):
 
 # ============================================================
 # Main GRPO Training Loop (DDP-compatible)
-# Additive shaping + within-rollout normalized local signal (baseline=0)
+# Multiplicative shaping + nonnegative + renormalized mean(mult)=1.
 # ============================================================
 def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
     set_seed(CONFIG["seed"] + ddp_rank)
@@ -719,7 +719,8 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
 
             rewards_np = np.asarray(rewards, dtype=np.float32)
             r_mean = float(rewards_np.mean())
-            r_std = float(rewards_np.std()) + 1e-8
+            global_std_floor = float(CONFIG.get("global_std_floor", 1e-3))
+            r_std = max(float(rewards_np.std()), global_std_floor) + 1e-8                        
             A_global = (rewards_np - r_mean) / r_std
             A_global = np.clip(A_global, -global_adv_clip, global_adv_clip)
 
@@ -744,17 +745,27 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                     r = np.zeros((T,), dtype=np.float32)
 
                 # within-rollout centering + scaling
-                sd = float(r.std())
-                sd = max(sd, local_std_floor)
+                sd_raw = float(r.std())
+                sd = max(sd_raw, local_std_floor)
 
+                # nonnegative signal (no mean subtraction)
                 r_norm = r / (sd + 1e-8)
-                r_norm = np.clip(r_norm, -local_clip, local_clip)
+                r_norm = np.clip(r_norm, 0.0, local_clip)  # keep nonnegative; optional
 
-                A_seq = float(A_global[i]) + alpha * r_norm
+                mult = 1.0 + alpha * r_norm
+
+                # normalize so mean(mult)=1 (prevents global amplification)
+                m_mean = float(mult.mean())
+                if m_mean > 1e-12:
+                    mult = mult / m_mean
+
+                mult = np.clip(mult, mult_min, mult_max)
+                A_seq = float(A_global[i]) * mult
                 advantages_list.append(A_seq.astype(np.float32))
-
+            
             # ---- DEBUG (rank0): print one graph / one rollout ----
             if ddp_rank == 0 and bool(CONFIG.get("debug_one_graph", False)) and (epoch == 0):
+                # only print for the first training graph processed on rank0
                 if len(e_iou) == 0:
                     k_dbg = int(CONFIG.get("debug_print_rollout", 0))
                     k_dbg = max(0, min(k_dbg, len(rollouts) - 1))
@@ -763,38 +774,54 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                     T_dbg = len(out_dbg["actions"])
                     r_dbg = np.asarray(out_dbg.get("step_rewards", np.zeros(T_dbg, dtype=np.float32)), dtype=np.float32)
 
-                    print("\n[DEBUG additive global+local]")
-                    print(f"  graph(folder_idx)={folder_idx}  rollout=k{k_dbg}  T={T_dbg}")
+                    # local stats
+                    sd = float(r_dbg.std()) if T_dbg > 0 else 0.0
+                    sd_eff = max(sd, float(CONFIG.get("local_std_floor", 1e-2)))
 
-                    # telescoping sanity (only meaningful if gt_buf is not None and step rewards were tracked)
+                    # === MATCH TRAINING LOGIC ===
+                    local_clip_v = float(CONFIG.get("local_clip", 2.0))
+                    alpha_v = float(CONFIG.get("shape_alpha", 0.2))
+                    mult_min_v = float(CONFIG.get("mult_min", 0.0))
+                    mult_max_v = float(CONFIG.get("mult_max", 2.0))
+
+                    # nonnegative signal + clip
+                    r_norm = r_dbg / (sd_eff + 1e-8)
+                    r_norm_clip = np.clip(r_norm, 0.0, local_clip_v)
+
+                    mult_raw = 1.0 + alpha_v * r_norm_clip
+                    mult_raw_mean = float(mult_raw.mean()) if T_dbg > 0 else 1.0
+
+                    # renormalize to mean 1
+                    mult_renorm = mult_raw / (mult_raw_mean + 1e-12)
+
+                    # final clip
+                    mult_clip = np.clip(mult_renorm, mult_min_v, mult_max_v)
+
+                    A_g = float(A_global[k_dbg])
+                    A_seq = np.asarray(advantages_list[k_dbg], dtype=np.float32)
+
+                    # telescoping sanity
                     pred_buf_dbg = buffered_union_from_edges(out_dbg["edges_xy"], CONFIG["buffer_radius"])
                     stats_dbg = overlap_stats_from_unions(gt_buf, pred_buf_dbg)
                     final_iou_dbg = float(stats_dbg["iou"])
-                    sum_step_dbg = float(r_dbg.sum()) if T_dbg > 0 else 0.0
+                    sum_step_dbg = float(r_dbg.sum())
+
+                    # how often we hit bounds (on this rollout)
+                    hit_lo = int(np.sum(mult_renorm <= mult_min_v + 1e-12)) if T_dbg > 0 else 0
+                    hit_hi = int(np.sum(mult_renorm >= mult_max_v - 1e-12)) if T_dbg > 0 else 0
+
+                    print("\n[DEBUG global+local (renorm)]")
+                    print(f"  graph(folder_idx)={folder_idx}  rollout=k{k_dbg}  T={T_dbg}")
                     print(f"  final_iou(rollout)={final_iou_dbg:.6f}  sum(step_rewards)={sum_step_dbg:.6f}  diff={final_iou_dbg - sum_step_dbg:.6f}")
-
-                    A_g = float(A_global[k_dbg])
-                    alpha = float(CONFIG.get("shape_alpha", 0.2))
                     print(f"  A_global(k)={A_g:.4f}   rewards across K: min/mean/max=({float(rewards_np.min()):.4f},{float(rewards_np.mean()):.4f},{float(rewards_np.max()):.4f})")
-                    print(f"  alpha={alpha:.3f}")
-
-                    if T_dbg == 0:
-                        print("  [DEBUG] rollout has zero actions; skipping local stats\n")
-                    else:
-                        sd = float(r_dbg.std())
-                        sd_eff = max(sd, float(CONFIG.get("local_std_floor", 1e-2)))
-                        r_norm = r_dbg / (sd_eff + 1e-8)
-                        local_clip = float(CONFIG.get("local_clip", 2.0))
-                        r_norm_clip = np.clip(r_norm, -local_clip, local_clip)
-
-                        A_local = alpha * r_norm_clip
-                        A_seq = np.asarray(advantages_list[k_dbg], dtype=np.float32)
-
-                        print(f"  step_rewards: min/mean/max=({float(r_dbg.min()):.6f},{float(r_dbg.mean()):.6f},{float(r_dbg.max()):.6f})")
-                        print(f"  local std={sd:.6f}  std_eff={sd_eff:.6f}")
-                        print(f"  r_norm_clip: min/mean/max=({float(r_norm_clip.min()):.3f},{float(r_norm_clip.mean()):.3f},{float(r_norm_clip.max()):.3f})")
-                        print(f"  alpha*r_norm_clip: min/mean/max=({float(A_local.min()):.3f},{float(A_local.mean()):.3f},{float(A_local.max()):.3f})")
-                        print(f"  A_seq:             min/mean/max=({float(A_seq.min()):.3f},{float(A_seq.mean()):.3f},{float(A_seq.max()):.3f})\n")
+                    print(f"  step_rewards: min/mean/max=({float(r_dbg.min() if T_dbg else 0):.6f},{float(r_dbg.mean() if T_dbg else 0):.6f},{float(r_dbg.max() if T_dbg else 0):.6f})")
+                    print(f"  local mean(mu)={mu:.6f}  local std(sd)={sd:.6f}  std_eff={sd_eff:.6f}")
+                    print(f"  r_norm_clip>=0: min/mean/max=({float(r_norm_clip.min() if T_dbg else 0):.3f},{float(r_norm_clip.mean() if T_dbg else 0):.3f},{float(r_norm_clip.max() if T_dbg else 0):.3f})")
+                    print(f"  mult_raw:    min/mean/max=({float(mult_raw.min() if T_dbg else 1):.3f},{float(mult_raw_mean):.3f},{float(mult_raw.max() if T_dbg else 1):.3f})")
+                    print(f"  mult_renorm: min/mean/max=({float(mult_renorm.min() if T_dbg else 1):.3f},{float(mult_renorm.mean() if T_dbg else 1):.3f},{float(mult_renorm.max() if T_dbg else 1):.3f})")
+                    print(f"  mult_clip[{mult_min_v:.2f},{mult_max_v:.2f}]: min/mean/max=({float(mult_clip.min() if T_dbg else 1):.3f},{float(mult_clip.mean() if T_dbg else 1):.3f},{float(mult_clip.max() if T_dbg else 1):.3f})  hit_lo/hi=({hit_lo},{hit_hi})")
+                    print(f"  A_seq:       min/mean/max=({float(A_seq.min() if T_dbg else 0):.3f},{float(A_seq.mean() if T_dbg else 0):.3f},{float(A_seq.max() if T_dbg else 0):.3f})")
+                    print("")
         
             # ---- replay with grad (DDP sync OFF) ----
             policy.eval()

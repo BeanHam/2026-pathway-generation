@@ -18,7 +18,7 @@ CONFIG = {
     'output_size':            (256, 256),
     
     # GRPO Training Hyperparams
-    'num_epochs':             10,
+    'num_epochs':             9,
     'grad_accum':             8,
     'lr':                     3e-5,
     'weight_decay':           1e-4,
