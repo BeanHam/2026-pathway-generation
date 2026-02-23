@@ -260,6 +260,18 @@ def rollout_collect_actions(
     gt_buf=None,
     buffer_radius=0.01,
 ):
+    """
+    Rollout policy to collect actions + edges.
+    If step_advantages=True and gt_buf is provided, also returns step_rewards where:
+
+      r_block = (Δ intersection_area) / (Δ pred_area + eps)
+      distributed equally to actions that produced edges since last eval.
+
+    Notes:
+    - step_rewards is aligned with actions (same length).
+    - STOP actions get step_reward=0.
+    - If gt_buf is None, step_rewards (when enabled) will be all zeros.
+    """
     device = CONFIG["device"]
     rng = random.Random(rng_seed)
 
@@ -270,17 +282,51 @@ def rollout_collect_actions(
 
     stop_idx = int(CONFIG["stop_class_idx"])
 
+    # ---- step reward bookkeeping (ΔI / ΔA) ----
     step_rewards = []
-    prev_iou = 0.0
     pending_action_idxs = []
     stride = max(1, int(CONFIG.get("step_iou_stride", 1)))
     max_edges = int(CONFIG.get("step_iou_max_edges", 10**9))
+    eps_area = float(CONFIG.get("step_area_eps", 1e-12))
+
+    prev_pred_area = 0.0
+    prev_inter_area = 0.0
 
     starts = choose_seed_positions(seed_strategy, seeds_per_graph, rng, gt_nodes=gt_nodes)
     for p in starts:
         p = (float(np.clip(p[0], 0, 1)), float(np.clip(p[1], 0, 1)))
         nodes_xy.append(p)
         stack.append(len(nodes_xy) - 1)
+
+    def _eval_block_and_credit():
+        """Evaluate current pred_buf, compute r_block, and credit pending actions."""
+        nonlocal prev_pred_area, prev_inter_area, pending_action_idxs
+
+        if (not step_advantages) or (gt_buf is None) or (not pending_action_idxs):
+            pending_action_idxs.clear()
+            return
+
+        pred_buf_t = buffered_union_from_edges(edges_xy, buffer_radius)
+
+        if pred_buf_t is None:
+            pred_area_t = 0.0
+            inter_area_t = 0.0
+        else:
+            pred_area_t = float(pred_buf_t.area)
+            # intersection with gt buffered union
+            inter_area_t = float(pred_buf_t.intersection(gt_buf).area) if gt_buf is not None else 0.0
+
+        d_pred = max(0.0, pred_area_t - prev_pred_area)
+        d_inter =  max(0.0, inter_area_t - prev_inter_area)
+        r_block = float(d_inter) / (float(d_pred) + eps_area) if d_pred > 0.0 else 0.0
+
+        per = r_block / float(len(pending_action_idxs))
+        for j in pending_action_idxs:
+            step_rewards[j] += per
+
+        pending_action_idxs.clear()
+        prev_pred_area = pred_area_t
+        prev_inter_area = inter_area_t
 
     while stack and steps_used < max_global_steps:
         u_id = stack.pop()
@@ -304,17 +350,21 @@ def rollout_collect_actions(
 
             logits_s = logits / max(float(temperature), 1e-8)
 
+            # STOP veto
             if stop_prob < stop_prob_thresh:
                 logits_s = logits_s.clone()
                 logits_s[stop_idx] = -1e9
 
+            # mask bins already used at this node
             if used_actions:
                 logits_s = logits_s.clone()
                 logits_s[list(used_actions)] = -1e9
 
+            # no valid actions
             if torch.max(logits_s).item() <= -1e8:
                 break
 
+            # choose action
             if topk == 1:
                 a_idx = int(torch.argmax(logits_s).item())
             else:
@@ -331,6 +381,7 @@ def rollout_collect_actions(
             if step_advantages:
                 step_rewards.append(0.0)
 
+            # STOP ends this node
             if a_idx == stop_idx:
                 break
 
@@ -346,6 +397,7 @@ def rollout_collect_actions(
             if new_pos == u_pos:
                 break
 
+            # commit edge
             nodes_xy.append(new_pos)
             v_id = len(nodes_xy) - 1
             stack.append(v_id)
@@ -355,27 +407,16 @@ def rollout_collect_actions(
             edges_xy.append((u_pos, new_pos))
             steps_used += 1
 
+            # step reward: record which action produced this edge
             if step_advantages and (gt_buf is not None) and (len(edges_xy) <= max_edges):
                 pending_action_idxs.append(len(actions) - 1)
-                if (len(edges_xy) % stride) == 0:
-                    pred_buf_t = buffered_union_from_edges(edges_xy, buffer_radius)
-                    iou_t = overlap_stats_from_unions(gt_buf, pred_buf_t)["iou"]
-                    d_iou = float(iou_t) - float(prev_iou)
-                    per = d_iou / float(len(pending_action_idxs))
-                    for j in pending_action_idxs:
-                        step_rewards[j] += per
-                    pending_action_idxs.clear()
-                    prev_iou = float(iou_t)
 
-    if step_advantages and (gt_buf is not None) and pending_action_idxs:
-        pred_buf_t = buffered_union_from_edges(edges_xy, buffer_radius)
-        iou_t = overlap_stats_from_unions(gt_buf, pred_buf_t)["iou"]
-        d_iou = float(iou_t) - float(prev_iou)
-        per = d_iou / float(len(pending_action_idxs))
-        for j in pending_action_idxs:
-            step_rewards[j] += per
-        pending_action_idxs.clear()
-        prev_iou = float(iou_t)
+                # evaluate every `stride` edges
+                if (len(edges_xy) % stride) == 0:
+                    _eval_block_and_credit()
+
+    # flush remaining pending rewards at end
+    _eval_block_and_credit()
 
     out = {"edges_xy": edges_xy, "actions": actions}
     if step_advantages:
@@ -582,7 +623,7 @@ def allreduce_mean(x: float, device):
 
 # ============================================================
 # Main GRPO Training Loop (DDP-compatible)
-# Multiplicative shaping + nonnegative + renormalized mean(mult)=1.
+# Multiplicative shaping
 # ============================================================
 def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
     set_seed(CONFIG["seed"] + ddp_rank)
@@ -594,6 +635,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
     with open(CONFIG["val_index"], "r") as f:
         val_indices = [line.strip() for line in f]
 
+    # run dir only on rank0
     if ddp_rank == 0:
         run_name = f"{CONFIG['model']}_{time.strftime('%Y%m%d_%H%M%S')}"
         run_dir = os.path.join(CONFIG["save_path"], run_name)
@@ -603,6 +645,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
     else:
         run_dir = None
 
+    # broadcast run_dir
     if use_ddp:
         obj = [run_dir]
         dist.broadcast_object_list(obj, src=0)
@@ -611,6 +654,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
     best_path = os.path.join(run_dir, "model_best.pth")
     last_path = os.path.join(run_dir, "model_last.pth")
 
+    # models
     policy = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=CONFIG["model"]).to(device)
     ref    = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=CONFIG["model"]).to(device)
 
@@ -626,8 +670,13 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
 
     if use_ddp:
         local_rank = int(os.environ["LOCAL_RANK"])
-        policy = DDP(policy, device_ids=[local_rank], output_device=local_rank,
-                     broadcast_buffers=False, find_unused_parameters=False)
+        policy = DDP(
+            policy,
+            device_ids=[local_rank],
+            output_device=local_rank,
+            broadcast_buffers=False,
+            find_unused_parameters=False,
+        )
 
     if should_freeze_bn(CONFIG["model"]):
         policy.apply(freeze_bn)
@@ -636,22 +685,27 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
     optimizer = optim.AdamW(policy.parameters(), lr=CONFIG["lr"], weight_decay=CONFIG["weight_decay"])
     mean4, std4 = _mean_std_4(device)
 
-    # shaping params
-    alpha = float(CONFIG.get("shape_alpha", 0.2))
-    local_clip = float(CONFIG.get("local_clip", 2.0))
+    # shaping params (global + local)
+    alpha = float(CONFIG.get("shape_alpha", 0.2))             # multiplier strength
+    local_clip = float(CONFIG.get("local_clip", 2.0))         # clip on normalized local signal
     local_std_floor = float(CONFIG.get("local_std_floor", 1e-2))
-    mult_min = float(CONFIG.get("mult_min", 0.0))
-    mult_max = float(CONFIG.get("mult_max", 2.0))
+    global_std_floor = float(CONFIG.get("global_std_floor", 1e-3))
     global_adv_clip = float(CONFIG.get("global_adv_clip", 5.0))
 
-    history = {"train_iou": [], "val_iou": [], "train_reward": [], "train_kl_raw_mean": [], "train_entropy_mean": []}
+    history = {
+        "train_iou": [], "val_iou": [],
+        "train_reward": [],
+        "train_kl_raw_mean": [],
+        "train_entropy_mean": [],
+    }
     best_val_iou = -1.0
 
     step_advantages = bool(CONFIG.get("step_advantages", False))
-    if not step_advantages and ddp_rank == 0:
+    if (not step_advantages) and ddp_rank == 0:
         print("[WARN] step_advantages=False: local shaping will be all zeros. Set step_advantages=True.")
 
     for epoch in range(CONFIG["num_epochs"]):
+        # shard train list
         rng = random.Random(CONFIG["seed"] + epoch)
         shuffled = train_all[:]
         rng.shuffle(shuffled)
@@ -665,6 +719,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
         else:
             train_indices = shuffled
 
+        # train mode
         policy.train()
         if should_freeze_bn(CONFIG["model"]):
             policy.apply(freeze_bn)
@@ -676,6 +731,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
         e_iou, e_reward, e_klraw, e_ent = [], [], [], []
 
         for folder_idx in pbar:
+            # load
             G_gt, sat = _load_graph_and_sat(CONFIG["data_root"], str(folder_idx), sat_name="satellite.png")
             gt_nodes = list(G_gt.nodes)
             H, W = sat.shape[:2]
@@ -687,7 +743,6 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                 policy.apply(freeze_bn)
 
             rollouts, rollout_stats, rewards = [], [], []
-
             for k in range(CONFIG["K"]):
                 traj = rollout_collect_actions(
                     satellite_img=sat, H=H, W=W,
@@ -717,14 +772,16 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                 rollout_stats.append(stats)
                 rewards.append(float(reward))
 
+            # ---- global advantage across K (graph-level reward) ----
             rewards_np = np.asarray(rewards, dtype=np.float32)
             r_mean = float(rewards_np.mean())
-            global_std_floor = float(CONFIG.get("global_std_floor", 1e-3))
-            r_std = max(float(rewards_np.std()), global_std_floor) + 1e-8                        
+            r_std = max(float(rewards_np.std()), global_std_floor) + 1e-8
             A_global = (rewards_np - r_mean) / r_std
             A_global = np.clip(A_global, -global_adv_clip, global_adv_clip)
 
             # ---- build per-rollout per-step advantages via multiplicative shaping ----
+            # local signal is per-step reward r_t (ΔI/ΔA blocks already distributed to steps)
+            # we DO mean-subtraction here so r_t=0 tends to be < mean -> negative local effect
             advantages_list = []
             for i, out in enumerate(rollouts):
                 actions = out["actions"]
@@ -733,7 +790,6 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                     advantages_list.append(np.zeros((0,), dtype=np.float32))
                     continue
 
-                # local step rewards
                 if step_advantages:
                     r = out.get("step_rewards", None)
                     if r is None:
@@ -744,85 +800,61 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                 else:
                     r = np.zeros((T,), dtype=np.float32)
 
-                # within-rollout centering + scaling
-                sd_raw = float(r.std())
-                sd = max(sd_raw, local_std_floor)
+                mu = float(r.mean()) if T > 0 else 0.0
+                sd = max(float(r.std()), local_std_floor) + 1e-8
 
-                # nonnegative signal (no mean subtraction)
-                r_norm = r / (sd + 1e-8)
-                r_norm = np.clip(r_norm, 0.0, local_clip)  # keep nonnegative; optional
+                r_norm = (r - mu) / sd
+                r_norm = np.clip(r_norm, -local_clip, local_clip)
 
                 mult = 1.0 + alpha * r_norm
-
-                # normalize so mean(mult)=1 (prevents global amplification)
-                m_mean = float(mult.mean())
-                if m_mean > 1e-12:
-                    mult = mult / m_mean
-
-                mult = np.clip(mult, mult_min, mult_max)
                 A_seq = float(A_global[i]) * mult
                 advantages_list.append(A_seq.astype(np.float32))
-            
+
             # ---- DEBUG (rank0): print one graph / one rollout ----
-            if ddp_rank == 0 and bool(CONFIG.get("debug_one_graph", False)) and (epoch == 0):
-                # only print for the first training graph processed on rank0
-                if len(e_iou) == 0:
-                    k_dbg = int(CONFIG.get("debug_print_rollout", 0))
-                    k_dbg = max(0, min(k_dbg, len(rollouts) - 1))
+            if ddp_rank == 0 and bool(CONFIG.get("debug_one_graph", False)) and (epoch == 0) and (len(e_iou) == 0):
+                k_dbg = int(CONFIG.get("debug_print_rollout", 0))
+                k_dbg = max(0, min(k_dbg, len(rollouts) - 1))
 
-                    out_dbg = rollouts[k_dbg]
-                    T_dbg = len(out_dbg["actions"])
-                    r_dbg = np.asarray(out_dbg.get("step_rewards", np.zeros(T_dbg, dtype=np.float32)), dtype=np.float32)
+                out_dbg = rollouts[k_dbg]
+                T_dbg = len(out_dbg["actions"])
+                r_dbg = np.asarray(out_dbg.get("step_rewards", np.zeros(T_dbg, dtype=np.float32)), dtype=np.float32)
 
-                    # local stats
-                    sd = float(r_dbg.std()) if T_dbg > 0 else 0.0
-                    sd_eff = max(sd, float(CONFIG.get("local_std_floor", 1e-2)))
+                # === local normalization used in training ===
+                mu_dbg = float(r_dbg.mean()) if T_dbg > 0 else 0.0
+                sd_dbg = max(float(r_dbg.std()), local_std_floor) + 1e-8
+                r_norm_dbg = np.clip((r_dbg - mu_dbg) / sd_dbg, -local_clip, local_clip)
+                mult_dbg = 1.0 + alpha * r_norm_dbg
 
-                    # === MATCH TRAINING LOGIC ===
-                    local_clip_v = float(CONFIG.get("local_clip", 2.0))
-                    alpha_v = float(CONFIG.get("shape_alpha", 0.2))
-                    mult_min_v = float(CONFIG.get("mult_min", 0.0))
-                    mult_max_v = float(CONFIG.get("mult_max", 2.0))
+                # === geometry stats (ΔI/ΔA reward is NOT IoU-telescoping) ===
+                pred_buf_dbg = buffered_union_from_edges(out_dbg["edges_xy"], CONFIG["buffer_radius"])
+                stats_dbg = overlap_stats_from_unions(gt_buf, pred_buf_dbg)
+                final_iou_dbg = float(stats_dbg["iou"])
 
-                    # nonnegative signal + clip
-                    r_norm = r_dbg / (sd_eff + 1e-8)
-                    r_norm_clip = np.clip(r_norm, 0.0, local_clip_v)
+                if pred_buf_dbg is None:
+                    pred_area_dbg = 0.0
+                    inter_area_dbg = 0.0
+                else:
+                    pred_area_dbg = float(pred_buf_dbg.area)
+                    inter_area_dbg = float(pred_buf_dbg.intersection(gt_buf).area) if gt_buf is not None else 0.0
 
-                    mult_raw = 1.0 + alpha_v * r_norm_clip
-                    mult_raw_mean = float(mult_raw.mean()) if T_dbg > 0 else 1.0
+                eff_dbg = inter_area_dbg / (pred_area_dbg + 1e-12)  # "overall" overlap efficiency
+                sum_step_dbg = float(r_dbg.sum())
 
-                    # renormalize to mean 1
-                    mult_renorm = mult_raw / (mult_raw_mean + 1e-12)
+                A_g = float(A_global[k_dbg])
+                A_seq_dbg = np.asarray(advantages_list[k_dbg], dtype=np.float32)
 
-                    # final clip
-                    mult_clip = np.clip(mult_renorm, mult_min_v, mult_max_v)
+                print("\n[DEBUG global+local (ΔI/ΔA local reward)]")
+                print(f"  graph(folder_idx)={folder_idx}  rollout=k{k_dbg}  T={T_dbg}")
+                print(f"  final_iou(rollout)={final_iou_dbg:.6f}")
+                print(f"  final_pred_area={pred_area_dbg:.6f}  final_inter_area={inter_area_dbg:.6f}  final_eff(inter/pred)={eff_dbg:.6f}")
+                print(f"  step_rewards sum/mean/max=({sum_step_dbg:.6f},{float(r_dbg.mean() if T_dbg else 0):.6f},{float(r_dbg.max() if T_dbg else 0):.6f})")
+                print(f"  A_global(k)={A_g:.4f}   rewards across K: min/mean/max=({float(rewards_np.min()):.4f},{float(rewards_np.mean()):.4f},{float(rewards_np.max()):.4f})")
+                print(f"  local mu={mu_dbg:.6f}  local std={sd_dbg:.6f}  clip={local_clip:.2f}")
+                print(f"  r_norm:  min/mean/max=({float(r_norm_dbg.min() if T_dbg else 0):.3f},{float(r_norm_dbg.mean() if T_dbg else 0):.3f},{float(r_norm_dbg.max() if T_dbg else 0):.3f})")
+                print(f"  mult:    min/mean/max=({float(mult_dbg.min() if T_dbg else 1):.3f},{float(mult_dbg.mean() if T_dbg else 1):.3f},{float(mult_dbg.max() if T_dbg else 1):.3f})")
+                print(f"  A_seq:   min/mean/max=({float(A_seq_dbg.min() if T_dbg else 0):.3f},{float(A_seq_dbg.mean() if T_dbg else 0):.3f},{float(A_seq_dbg.max() if T_dbg else 0):.3f})")
+                print("")
 
-                    A_g = float(A_global[k_dbg])
-                    A_seq = np.asarray(advantages_list[k_dbg], dtype=np.float32)
-
-                    # telescoping sanity
-                    pred_buf_dbg = buffered_union_from_edges(out_dbg["edges_xy"], CONFIG["buffer_radius"])
-                    stats_dbg = overlap_stats_from_unions(gt_buf, pred_buf_dbg)
-                    final_iou_dbg = float(stats_dbg["iou"])
-                    sum_step_dbg = float(r_dbg.sum())
-
-                    # how often we hit bounds (on this rollout)
-                    hit_lo = int(np.sum(mult_renorm <= mult_min_v + 1e-12)) if T_dbg > 0 else 0
-                    hit_hi = int(np.sum(mult_renorm >= mult_max_v - 1e-12)) if T_dbg > 0 else 0
-
-                    print("\n[DEBUG global+local (renorm)]")
-                    print(f"  graph(folder_idx)={folder_idx}  rollout=k{k_dbg}  T={T_dbg}")
-                    print(f"  final_iou(rollout)={final_iou_dbg:.6f}  sum(step_rewards)={sum_step_dbg:.6f}  diff={final_iou_dbg - sum_step_dbg:.6f}")
-                    print(f"  A_global(k)={A_g:.4f}   rewards across K: min/mean/max=({float(rewards_np.min()):.4f},{float(rewards_np.mean()):.4f},{float(rewards_np.max()):.4f})")
-                    print(f"  step_rewards: min/mean/max=({float(r_dbg.min() if T_dbg else 0):.6f},{float(r_dbg.mean() if T_dbg else 0):.6f},{float(r_dbg.max() if T_dbg else 0):.6f})")
-                    print(f"  local mean(mu)={mu:.6f}  local std(sd)={sd:.6f}  std_eff={sd_eff:.6f}")
-                    print(f"  r_norm_clip>=0: min/mean/max=({float(r_norm_clip.min() if T_dbg else 0):.3f},{float(r_norm_clip.mean() if T_dbg else 0):.3f},{float(r_norm_clip.max() if T_dbg else 0):.3f})")
-                    print(f"  mult_raw:    min/mean/max=({float(mult_raw.min() if T_dbg else 1):.3f},{float(mult_raw_mean):.3f},{float(mult_raw.max() if T_dbg else 1):.3f})")
-                    print(f"  mult_renorm: min/mean/max=({float(mult_renorm.min() if T_dbg else 1):.3f},{float(mult_renorm.mean() if T_dbg else 1):.3f},{float(mult_renorm.max() if T_dbg else 1):.3f})")
-                    print(f"  mult_clip[{mult_min_v:.2f},{mult_max_v:.2f}]: min/mean/max=({float(mult_clip.min() if T_dbg else 1):.3f},{float(mult_clip.mean() if T_dbg else 1):.3f},{float(mult_clip.max() if T_dbg else 1):.3f})  hit_lo/hi=({hit_lo},{hit_hi})")
-                    print(f"  A_seq:       min/mean/max=({float(A_seq.min() if T_dbg else 0):.3f},{float(A_seq.mean() if T_dbg else 0):.3f},{float(A_seq.max() if T_dbg else 0):.3f})")
-                    print("")
-        
             # ---- replay with grad (DDP sync OFF) ----
             policy.eval()
             if should_freeze_bn(CONFIG["model"]):
@@ -852,10 +884,12 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                 replay_kls.append(rep["kl_raw_mean"])
                 replay_ents.append(rep["entropy_mean"])
 
+            # restore train mode
             policy.train()
             if should_freeze_bn(CONFIG["model"]):
                 policy.apply(freeze_bn)
 
+            # local logs
             g_iou = float(np.mean([s["iou"] for s in rollout_stats]))
             g_reward = float(rewards_np.mean())
             g_klraw = float(np.mean(replay_kls)) if replay_kls else 0.0
@@ -913,10 +947,10 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
 
             val_subset = val_indices[: min(len(val_indices), CONFIG["val_graphs"])]
             v_iou = []
-            for folder_idx in val_subset:
-                G_gt, sat = _load_graph_and_sat(CONFIG["data_root"], str(folder_idx), sat_name="satellite.png")
+            for v_folder in val_subset:
+                G_gt, sat = _load_graph_and_sat(CONFIG["data_root"], str(v_folder), sat_name="satellite.png")
                 H, W = sat.shape[:2]
-                gt_buf = get_gt_buf_cached(folder_idx, G_gt, CONFIG["buffer_radius"])
+                gt_buf = get_gt_buf_cached(v_folder, G_gt, CONFIG["buffer_radius"])
 
                 traj = rollout_collect_actions(
                     satellite_img=sat, H=H, W=W,
@@ -926,7 +960,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
                     mean4=mean4, std4=std4,
                     seed_strategy=CONFIG["seed_strategy"],
                     seeds_per_graph=CONFIG["seeds_per_graph"],
-                    rng_seed=(CONFIG["seed"] + epoch * 999 + int(folder_idx)),
+                    rng_seed=(CONFIG["seed"] + epoch * 999 + int(v_folder)),
                     gt_nodes=list(G_gt.nodes),
                     max_global_steps=CONFIG["max_global_steps"],
                     max_expand_per_node=CONFIG["max_expand_per_node"],

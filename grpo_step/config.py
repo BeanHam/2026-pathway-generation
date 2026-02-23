@@ -16,17 +16,7 @@ CONFIG = {
     'local_clip':             3.0,
     'local_std_floor':        1e-3,
     'global_std_floor':       1e-3,
-    'mult_min':               0.7,
-    'mult_max':               1.3,
     'global_adv_clip':        5.0,
-
-    # 'shape_alpha':            0.1,
-    # 'local_clip':             2.0,
-    # 'local_std_floor':        1e-3,
-    # 'global_std_floor':       1e-3,
-    # 'mult_min':               0.8,
-    # 'mult_max':               1.2,
-    # 'global_adv_clip':        5.0,
                 
     # debug
     'debug_one_graph':        True,
@@ -35,7 +25,7 @@ CONFIG = {
     # Model Params
     'model':                  "resnet18",
     'num_angles':             36,
-    'num_dists':              10,        
+    'num_dists':              10,
     'stop_class_idx':         360,
     'total_classes':          361,
     
