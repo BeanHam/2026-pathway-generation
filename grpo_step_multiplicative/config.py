@@ -12,12 +12,12 @@ CONFIG = {
     'step_iou_max_edges':     100,
 
     # Multiplicative Update Hyperparameters
-    'shape_alpha':            0.1,
+    'shape_alpha':            0.2,
     'local_clip':             3.0,
     'local_std_floor':        1e-3,
     'global_std_floor':       1e-3,
     'global_adv_clip':        5.0,
-                
+    
     # debug
     'debug_one_graph':        True,
     'debug_print_rollout':    0,
