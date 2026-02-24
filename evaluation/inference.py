@@ -346,18 +346,16 @@ if __name__ == "__main__":
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112349_0.6/",
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260215_121343_0.8/",
         
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260216_103042_cont/',      # 7 epochs
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260220_133333_cont/',      # 8 epochs
-        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260222_140121_cont/",    # 9 epochs, 0.828
-        '/data/models/bin/2026_pathway_generation/grpo_logs_steps/resnet18_20260222_213415',       # resnet, alpha=0.1
-        '/data/models/bin/2026_pathway_generation/grpo_logs_steps/resnet18_20260222_213415',       # resnet, alpha=0.1
-        '/data/models/bin/2026_pathway_generation/grpo_logs_steps/resnet18_20260222_224533',       # resnet, alpha=0.2
-        '/data/models/bin/2026_pathway_generation/grpo_logs_steps/resnet18_20260222_224533',       # resnet, alpha=0.2
+        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260216_103042_cont/',        # 7 epochs
+        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260220_133333_cont/',        # 8 epochs
+        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260222_140121_cont/",        # 9 epochs, 0.828
+        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_114320',  # resnet, additive, attempt 1
+        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_114320',  # resnet, additive, attempt 1
+        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201',  # resnet, additive, attempt 2
+        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201',  # resnet, additive, attempt 2
     ]
     # models = ["resnet18", "vit_small", "swin_tiny"]
-    models = [#'swin_tiny_last_7e', 'swin_tiny_last_8e', 
-              'resnet_step_01_best', 'resnet_step_01_last',
-              'resnet_step_02_best', 'resnet_step_02_last']
+    models = ['resnet18_additive_1_best', 'resnet18_additive_1_last', 'resnet18_additive_2_best', 'resnet18_additive_2_last']
     
     datasets = [
         {
@@ -418,26 +416,18 @@ if __name__ == "__main__":
             if rank == 0:
                 print("-" * 50)
                 print("Model:", model_name, "| tag:", tag, "| world_size:", world_size)
-                print("-" * 50)
-              
+                print("-" * 50)            
+            
             # load model weights once per (run_dir, model_name)            
             if model_name in ['swin_tiny_20', 'swin_tiny_40', 'swin_tiny_60', 'swin_tiny_80']:
                 m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
                 m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
-                m.eval()
-            elif model_name == 'swin_tiny_last_7e':
-                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
-                m.load_state_dict(torch.load(os.path.join(run_dir, "model_last.pth"), map_location=device))
-                m.eval()
-            elif model_name == 'swin_tiny_last_8e':
-                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
-                m.load_state_dict(torch.load(os.path.join(run_dir, "model_last.pth"), map_location=device))
-                m.eval()
-            elif model_name in ['resnet_step_01_best', 'resnet_step_02_best']:
+                m.eval()            
+            elif model_name in ['resnet18_additive_1_best', 'resnet18_additive_2_best']:
                 m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='resnet18').to(device)
                 m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
                 m.eval()
-            elif model_name in ['resnet_step_01_last', 'resnet_step_02_last']:
+            elif model_name in ['resnet18_additive_1_last', 'resnet18_additive_2_last']:
                 m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='resnet18').to(device)
                 m.load_state_dict(torch.load(os.path.join(run_dir, "model_last.pth"), map_location=device))
                 m.eval()

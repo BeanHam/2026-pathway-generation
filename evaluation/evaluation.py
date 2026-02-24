@@ -226,13 +226,13 @@ if __name__ == "__main__":
             "name": "generation_full_data",
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
             "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_resnet18_step.csv",
+            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_resnet18_additive.csv",
         },
         # {
         #     "name": "pathwaybench_seattle",
         #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
         #     "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-        #     "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_swin_last.csv",
+        #     "out_csv": "/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results.csv",
         # },
     ]
 
@@ -277,7 +277,7 @@ if __name__ == "__main__":
 
         for model_name in sorted(os.listdir(pred_root)):
             
-            if model_name not in ["resnet_step_01_best", "resnet_step_01_last", "resnet_step_02_best", "resnet_step_02_last"]:
+            if model_name not in ['resnet18_additive_1_best', 'resnet18_additive_1_last', 'resnet18_additive_2_best', 'resnet18_additive_2_last']:
                 continue
             
             if model_name.startswith("_"):

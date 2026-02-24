@@ -20,10 +20,15 @@ from shapely.geometry import Point, LineString, MultiLineString, Polygon, Geomet
 # E_THRES = 2.5e-5
 # BUFF_DIS = 2e-5
 
+# PROJ = 'epsg:26910'
+# PRES = 1e-5
+# E_THRES = 5
+# BUFF_DIS = 4
+
 PROJ = 'epsg:26910'
 PRES = 1e-5
 E_THRES = 5
-BUFF_DIS = 4
+BUFF_DIS = 1
 
 def bounding_box_from_gdf(gdf):
     # Get the bounding box coordinates directly from the GeoDataFrame
