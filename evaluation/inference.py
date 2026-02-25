@@ -327,7 +327,7 @@ if __name__ == "__main__":
         # ------------------------------
         # reference (best checkpoints)
         # ------------------------------
-        # '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
+        '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
         # '/data/models/bin/2026_pathway_generation/reference_logs/vit_small_20260217_102936/',
         # '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/",
@@ -338,7 +338,7 @@ if __name__ == "__main__":
         # ------------------------------
         # grpo (best checkpoints)
         # ------------------------------
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260218_230403/',
+        '/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260218_230403/',
         # '/data/models/bin/2026_pathway_generation/grpo_logs/vit_small_20260218_230534/',
         # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260218_142801_cont/',
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_002621_0.2/",
@@ -349,20 +349,17 @@ if __name__ == "__main__":
         # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260216_103042_cont/',        # 7 epochs
         # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260220_133333_cont/',        # 8 epochs
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260222_140121_cont/",        # 9 epochs, 0.828
-        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_114320',  # resnet, additive, attempt 1
-        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_114320',  # resnet, additive, attempt 1
-        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201',  # resnet, additive, attempt 2
-        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201',  # resnet, additive, attempt 2
+        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201',  # resnet additive
     ]
     # models = ["resnet18", "vit_small", "swin_tiny"]
-    models = ['resnet18_additive_1_best', 'resnet18_additive_1_last', 'resnet18_additive_2_best', 'resnet18_additive_2_last']
+    models = ['resnet18', 'resnet18', 'resnet18']
     
     datasets = [
         {
             "name": "generation_full_data",
             "data_root": "/data/aiclinic/pathways/generation_full_data/pairs/",
             "test_txt":  "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_root":  "/data/models/bin/2026_pathway_generation/predictions/",
+            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_single/",
         },
         # {
         #     "name": "pathwaybench_seattle",
@@ -402,8 +399,13 @@ if __name__ == "__main__":
         my_indices = shard_list(test_indices, rank, world_size)
 
         for run_dir, model_name in zip(logs, models):
-            tag = "grpo" if "grpo_logs" in run_dir else "base"
-            infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config.json"))
+            
+            if "steps_additive" in run_dir: tag = "step"
+            elif "grpo_logs" in run_dir: tag = "grpo"
+            else: tag = "base"
+            
+            # infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config.json"))
+            infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config_single.json"))
 
             # model config
             CONFIG["device"] = device
@@ -422,14 +424,6 @@ if __name__ == "__main__":
             if model_name in ['swin_tiny_20', 'swin_tiny_40', 'swin_tiny_60', 'swin_tiny_80']:
                 m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
                 m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
-                m.eval()            
-            elif model_name in ['resnet18_additive_1_best', 'resnet18_additive_2_best']:
-                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='resnet18').to(device)
-                m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
-                m.eval()
-            elif model_name in ['resnet18_additive_1_last', 'resnet18_additive_2_last']:
-                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='resnet18').to(device)
-                m.load_state_dict(torch.load(os.path.join(run_dir, "model_last.pth"), map_location=device))
                 m.eval()
             # elif '_last' in model_name:
             #     m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name.replace('_last', '')).to(device)

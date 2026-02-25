@@ -222,11 +222,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     datasets = [
+        # {
+        #     "name": "generation_full_data",
+        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
+        #     "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
+        #     "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
+        # },
         {
             "name": "generation_full_data",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_single/",
             "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_resnet18_additive.csv",
+            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_single/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
         },
         # {
         #     "name": "pathwaybench_seattle",
@@ -277,7 +283,7 @@ if __name__ == "__main__":
 
         for model_name in sorted(os.listdir(pred_root)):
             
-            if model_name not in ['resnet18_additive_1_best', 'resnet18_additive_1_last', 'resnet18_additive_2_best', 'resnet18_additive_2_last']:
+            if model_name not in ['tile2net', 'resnet18', 'vit_small', 'swin_tiny']:
                 continue
             
             if model_name.startswith("_"):
@@ -287,7 +293,7 @@ if __name__ == "__main__":
             if not os.path.isdir(model_dir):
                 continue
 
-            for tag in ["base", "grpo"]:
+            for tag in ["base", "grpo", "step"]:
                 tag_dir = os.path.join(model_dir, tag)
                 if not os.path.isdir(tag_dir):
                     continue
