@@ -11,7 +11,7 @@ from config import CONFIG, REFERENCE_DIRS
 torch.backends.cudnn.benchmark = True
 
 def ddp_setup():
-    dist.init_process_group(backend="nccl", timeout=timedelta(minutes=120))
+    dist.init_process_group(backend="nccl", timeout=timedelta(minutes=180))
     local_rank = int(os.environ["LOCAL_RANK"])
     rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
@@ -79,6 +79,6 @@ if __name__ == "__main__":
         dist.barrier()
         ddp_cleanup()
         
-        
-        
 # torchrun --nproc_per_node=4 --master_port=29501 train_cont.py --run_dir /data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_114320/
+# torchrun --nproc_per_node=4 --master_port=29501 train_cont.py --run_dir /data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/vit_small_20260224_171845/
+

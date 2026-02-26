@@ -327,46 +327,50 @@ if __name__ == "__main__":
         # ------------------------------
         # reference (best checkpoints)
         # ------------------------------
-        '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
+        # '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
         # '/data/models/bin/2026_pathway_generation/reference_logs/vit_small_20260217_102936/',
         # '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
+        
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/",
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154110_0.4_cont/",
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_234446_0.6_cont/",
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154830_0.8_cont/",
         
         # ------------------------------
-        # grpo (best checkpoints)
+        # grpo (global)
         # ------------------------------
-        '/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260218_230403/',
+        # '/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260218_230403/',
         # '/data/models/bin/2026_pathway_generation/grpo_logs/vit_small_20260218_230534/',
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260218_142801_cont/',
+        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260221_045351_cont/',
+        
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_002621_0.2/",
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112255_0.4/",
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112349_0.6/",
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260215_121343_0.8/",
         
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260216_103042_cont/',        # 7 epochs
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260220_133333_cont/',        # 8 epochs
-        # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260222_140121_cont/",        # 9 epochs, 0.828
-        '/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201',  # resnet additive
+        # ------------------------------
+        # grpo (local)
+        # ------------------------------                
+        # "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201",
+        # "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/vit_small_20260224_171845",
+        "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/swin_tiny_20260224_210832",
     ]
     # models = ["resnet18", "vit_small", "swin_tiny"]
-    models = ['resnet18', 'resnet18', 'resnet18']
+    models = ['swin_tiny']
     
     datasets = [
         {
             "name": "generation_full_data",
             "data_root": "/data/aiclinic/pathways/generation_full_data/pairs/",
             "test_txt":  "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_single/",
+            "out_root":  "/data/models/bin/2026_pathway_generation/predictions/",
         },
-        # {
-        #     "name": "pathwaybench_seattle",
-        #     "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
-        #     "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-        #     "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-        # }
+        {
+            "name": "pathwaybench_seattle",
+            "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
+            "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+        }
     ]
 
     use_ddp = ("WORLD_SIZE" in os.environ) and (int(os.environ["WORLD_SIZE"]) > 1)
@@ -404,8 +408,7 @@ if __name__ == "__main__":
             elif "grpo_logs" in run_dir: tag = "grpo"
             else: tag = "base"
             
-            # infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config.json"))
-            infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config_single.json"))
+            infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config.json"))
 
             # model config
             CONFIG["device"] = device
