@@ -15,20 +15,12 @@ from shapely.ops import unary_union
 from shapely.ops import voronoi_diagram
 from shapely.geometry import Point, LineString, MultiLineString, Polygon, GeometryCollection
 
-# PROJ = 'epsg:4326'
-# PRES = 1e-5
-# E_THRES = 2.5e-5
-# BUFF_DIS = 2e-5
 
 PROJ = 'epsg:26910'
 PRES = 1e-5
 E_THRES = 5
-BUFF_DIS = 4
-
-# PROJ = 'epsg:26910'
-# PRES = 1e-5
-# E_THRES = 5
 # BUFF_DIS = 1
+BUFF_DIS = 4
 
 def bounding_box_from_gdf(gdf):
     # Get the bounding box coordinates directly from the GeoDataFrame

@@ -327,9 +327,9 @@ if __name__ == "__main__":
         # ------------------------------
         # reference (best checkpoints)
         # ------------------------------
-        # '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
-        # '/data/models/bin/2026_pathway_generation/reference_logs/vit_small_20260217_102936/',
-        # '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
+        '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
+        '/data/models/bin/2026_pathway_generation/reference_logs/vit_small_20260217_102936/',
+        '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
         
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/",
         # "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154110_0.4_cont/",
@@ -339,9 +339,9 @@ if __name__ == "__main__":
         # ------------------------------
         # grpo (global)
         # ------------------------------
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260218_230403/',
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/vit_small_20260218_230534/',
-        # '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260221_045351_cont/',
+        '/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260218_230403/',
+        '/data/models/bin/2026_pathway_generation/grpo_logs/vit_small_20260218_230534/',
+        '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260218_142801_cont/',
         
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_002621_0.2/",
         # "/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260214_112255_0.4/",
@@ -351,12 +351,11 @@ if __name__ == "__main__":
         # ------------------------------
         # grpo (local)
         # ------------------------------                
-        # "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201",
-        # "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/vit_small_20260224_171845",
+        "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201",
+        "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/vit_small_20260224_171845",
         "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/swin_tiny_20260224_210832",
     ]
-    # models = ["resnet18", "vit_small", "swin_tiny"]
-    models = ['swin_tiny']
+    models = ["resnet18", "vit_small", "swin_tiny"]*3
     
     datasets = [
         {
@@ -370,6 +369,12 @@ if __name__ == "__main__":
             "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
             "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
             "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+        },
+        {
+            "name": "pathwaybench_dc",
+            "data_root": "/data/aiclinic/pathways/pathwaybench_dc/pairs/",
+            "test_txt":  "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
+            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_dc/",
         }
     ]
 
@@ -428,10 +433,6 @@ if __name__ == "__main__":
                 m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name='swin_tiny').to(device)
                 m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
                 m.eval()
-            # elif '_last' in model_name:
-            #     m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name.replace('_last', '')).to(device)
-            #     m.load_state_dict(torch.load(os.path.join(run_dir, "model_last.pth"), map_location=device))
-            #     m.eval()
             else:
                 m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name).to(device)
                 m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))

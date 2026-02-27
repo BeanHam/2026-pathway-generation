@@ -217,11 +217,16 @@ if __name__ == "__main__":
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
             "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
         },
-        # {
-        #     "name": "pathwaybench_seattle",
-        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-        #     "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-        # },
+        {
+            "name": "pathwaybench_seattle",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+            "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+        },
+        {
+            "name": "pathwaybench_dc",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_dc/",
+            "split": "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
+        },
     ]
 
     for ds in datasets:
