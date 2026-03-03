@@ -19,8 +19,8 @@ from shapely.geometry import Point, LineString, MultiLineString, Polygon, Geomet
 PROJ = 'epsg:26910'
 PRES = 1e-5
 E_THRES = 5
-# BUFF_DIS = 1
-BUFF_DIS = 2
+BUFF_DIS = 1
+# BUFF_DIS = 2
 # BUFF_DIS = 4
 
 def bounding_box_from_gdf(gdf):

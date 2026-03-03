@@ -226,26 +226,26 @@ if __name__ == "__main__":
         #     "name": "generation_full_data",
         #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
         #     "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
-        #     "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
+        #     # "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
+        #     "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_5seeds_tile2net_{M.BUFF_DIS}.csv",
         # },
-        {
-            "name": "pathwaybench_seattle",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-            "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            # "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
-            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_tile2net_4m.csv",
-        },
+        # {
+        #     "name": "pathwaybench_seattle",
+        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+        #     "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+        #     # "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
+        #     "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_5seeds_tile2net_{M.BUFF_DIS}.csv",
+        # },
         {
             "name": "pathwaybench_dc",
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions_dc/",
             "split": "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
             # "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_dc/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
-            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_dc/evaluation_results_tile2net_4m.csv",
+            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_dc/evaluation_results_5seeds_tile2net_{M.BUFF_DIS}.csv",
         },
     ]
 
     seeds = 5
-    seeds = 1
 
     for ds in datasets:
         ds_name = ds["name"]
@@ -286,8 +286,7 @@ if __name__ == "__main__":
 
         for model_name in sorted(os.listdir(pred_root)):
             
-            # if model_name not in ['tile2net', 'resnet18', 'vit_small', 'swin_tiny']:
-            if model_name not in ['tile2net']:
+            if model_name not in ['tile2net', 'resnet18', 'vit_small', 'swin_tiny']:
                 continue
             
             if model_name.startswith("_"):
