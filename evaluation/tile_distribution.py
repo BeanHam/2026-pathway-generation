@@ -233,18 +233,18 @@ def tile_stats(gdf1, gdf2):
 if __name__ == "__main__":
     
     datasets = [
-        {
-            "name": "generation_full_data",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
-            "split": "/data/aiclinic/pathways/generation_full_data/test.txt",      
-            "out_csv": "/data/models/bin/2026_pathway_generation/predictions/tile_stats.csv",
-        },
-        {
-            "name": "pathwaybench_seattle",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-            "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_seattle/tile_stats.csv",   
-        },
+        # {
+        #     "name": "generation_full_data",
+        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
+        #     "split": "/data/aiclinic/pathways/generation_full_data/test.txt",      
+        #     "out_csv": "/data/models/bin/2026_pathway_generation/predictions/tile_stats.csv",
+        # },
+        # {
+        #     "name": "pathwaybench_seattle",
+        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+        #     "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+        #     "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_seattle/tile_stats.csv",   
+        # },
         {
             "name": "pathwaybench_dc",
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions_dc/",
@@ -276,7 +276,7 @@ if __name__ == "__main__":
                 for seed in range(5):
                     run_dir = os.path.join(tag_dir, f"seed_{seed}")
                     
-                    for idx in tqdm(split_indices[:3]):
+                    for idx in tqdm(split_indices):
                         gt_cache = load_gt_cache(idx, cache_dir)
                         if gt_cache is None:
                             continue

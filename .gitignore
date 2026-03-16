@@ -1,11 +1,5 @@
-analysis/
-batch_inputs/
-cache/
-data/
 .DS_Store
-inference/
-__pycache__/
-.ipynb_checkpoints/
-predictions/
+cache/
 visualizations/
-teaser/
+.ipynb_checkpoints/
+__pycache__/
