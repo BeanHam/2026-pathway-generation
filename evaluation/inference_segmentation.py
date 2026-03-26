@@ -135,7 +135,7 @@ def build_input_tensor(satellite_img, canvas, u_pos, cfg, device, mean, std):
     x = (x - mean) / std
     return x
 
-def choose_seed_positions(strategy, num_seeds, rng, gt_graph=None):
+def choose_seed_positions(strategy, num_seeds, rng, gt_graph=None, starting_points=None):
     if strategy == "random":
         return [(rng.random(), rng.random()) for _ in range(num_seeds)]
     if strategy == "grid":
@@ -149,6 +149,10 @@ def choose_seed_positions(strategy, num_seeds, rng, gt_graph=None):
         assert gt_graph is not None
         nodes = list(gt_graph.nodes)
         return [rng.choice(nodes) for _ in range(num_seeds)]
+    if strategy == "segmentation":
+        if not starting_points:
+            raise ValueError("No segmentation seeds available.")
+        return [rng.choice(starting_points) for _ in range(num_seeds)]
     raise ValueError(f"Unknown seed strategy: {strategy}")
 
 def topk_action_indices(logits_1d, k):
@@ -171,6 +175,7 @@ def generate_one_graph(
     encoder,
     cfg,
     mean, std,
+    starting_points,
     seed_strategy="gt_random",
     seeds_per_graph=1,
     restarts_per_graph=1,
@@ -300,7 +305,7 @@ def generate_one_graph(
     best_score = -1e18
 
     for _ in range(int(restarts_per_graph)):
-        starts = choose_seed_positions(seed_strategy, int(seeds_per_graph), rng, gt_graph=G_gt)
+        starts = choose_seed_positions(seed_strategy, int(seeds_per_graph), rng, gt_graph=G_gt, starting_points=starting_points)
         gen, stats = run_once(starts)
         score = float(stats["confidence"])
         if score > best_score:
@@ -321,16 +326,16 @@ def load_inference_config(path: str):
     with open(path, "r") as f:
         return json.load(f)
 
-
 if __name__ == "__main__":
+    
     logs = [
         # ------------------------------
-        # reference (best checkpoints)
+        # reference
         # ------------------------------
         '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
         '/data/models/bin/2026_pathway_generation/reference_logs/vit_small_20260217_102936/',
         '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
-                
+                        
         # ------------------------------
         # grpo (global)
         # ------------------------------
@@ -352,21 +357,21 @@ if __name__ == "__main__":
             "name": "generation_full_data",
             "data_root": "/data/aiclinic/pathways/generation_full_data/pairs/",
             "test_txt":  "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "seed_root": "/data/aiclinic/pathways/generation_full_data/pairs/segmentation_seeds.json",
+            "seed_root": "/data/aiclinic/pathways/generation_full_data/segmentation_seeds.json",
             "out_root":  "/data/models/bin/2026_pathway_generation/predictions_segmentation/",
         },
         {
             "name": "pathwaybench_seattle",
             "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
             "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "seed_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/segmentation_seeds.json",
+            "seed_root": "/data/aiclinic/pathways/pathwaybench_seattle/segmentation_seeds.json",
             "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle_segmentation/",
         },
         {
             "name": "pathwaybench_dc",
             "data_root": "/data/aiclinic/pathways/pathwaybench_dc/pairs/",
             "test_txt":  "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
-            "seed_root": "/data/aiclinic/pathways/pathwaybench_dc/pairs/segmentation_seeds.json",
+            "seed_root": "/data/aiclinic/pathways/pathwaybench_dc/segmentation_seeds.json",
             "out_root":  "/data/models/bin/2026_pathway_generation/predictions_dc_segmentation/",
         }
     ]
@@ -399,6 +404,8 @@ if __name__ == "__main__":
 
         test_indices = load_indices(ds["test_txt"])
         my_indices = shard_list(test_indices, rank, world_size)
+        with open(ds['seed_root'], "r") as f:
+            all_starting_points = json.load(f)
 
         for run_dir, model_name in zip(logs, models):
             
@@ -434,7 +441,7 @@ if __name__ == "__main__":
                 m.apply(freeze_bn)
 
             # seeds
-            for seed in range(5):
+            for seed in range(10):
                 out_dir = os.path.join(out_root, model_name, tag, f"seed_{seed}")
                 os.makedirs(out_dir, exist_ok=True)
 
@@ -454,7 +461,8 @@ if __name__ == "__main__":
                     gt_edges_xy = gt_graph_to_edges_xy(G_gt)
 
                     per_graph_seed = int(seed) + int(idx)
-
+                    starting_points = all_starting_points[idx]['points_norm']
+                    
                     gen = generate_one_graph(
                         G_gt=G_gt,
                         satellite_img=sat,
@@ -463,7 +471,7 @@ if __name__ == "__main__":
                         cfg=CONFIG,
                         mean=mean,
                         std=std,
-                        seed_strategy=infer_cfg.get("seed_strategy", "gt_random"),
+                        seed_strategy="segmentation",
                         seeds_per_graph=int(infer_cfg.get("seeds_per_graph", 1)),
                         restarts_per_graph=int(infer_cfg.get("restarts_per_graph", 1)),
                         topk=int(infer_cfg.get("topk", 1)),
@@ -471,6 +479,7 @@ if __name__ == "__main__":
                         max_expand_per_node=int(infer_cfg.get("max_expand_per_node", 4)),
                         max_global_steps=int(infer_cfg.get("max_global_steps", 200)),
                         rng_seed=per_graph_seed,
+                        starting_points = starting_points
                     )
 
                     pred_edges_xy = gen.get("edges_xy", [])

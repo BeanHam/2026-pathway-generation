@@ -34,7 +34,7 @@ CONFIG = {
     'max_global_steps':       200,
     
     # Sampling Parameters (Tunable)
-    'seed_strategy':          'gt_random',          
+    'seed_strategy':          'gt_random',
     'seeds_per_graph':        1,
 }
 
