@@ -3,10 +3,11 @@ CONFIG = {
     'data_root':            '/data/aiclinic/pathways/generation_full_data/pairs/',
     'train_index':          '/data/aiclinic/pathways/generation_full_data/train.txt',
     'val_index':            '/data/aiclinic/pathways/generation_full_data/val.txt',
+    'test_index':            '/data/aiclinic/pathways/generation_full_data/test.txt',
     'save_path':            '/data/models/bin/2026_pathway_generation/segmentation_logs/',
 
     # Model Params
-    'model':                'swin_tiny',   # {'swin_tiny', 'swin_small'}
+    'model':                'swin_tiny',
     'pretrained':           True,
     'decoder_dim':          96,
 
@@ -24,8 +25,8 @@ CONFIG = {
     'pos_weight':           5.0,
     
     # Inference / seeding
-    'prob_threshold':       0.35,
-    'seed_top_k':           10,
-    'seed_min_distance':    20,
-    'min_component_size':   32,
+    'prob_threshold':       0.5,
+    'seed_top_k':           50,
+    'seed_min_distance':    50,
+    'min_component_size':   50,
 }

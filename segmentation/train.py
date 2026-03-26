@@ -104,7 +104,8 @@ if __name__ == '__main__':
     model = DDP(model, device_ids=[local_rank], output_device=local_rank, broadcast_buffers=False)
 
     optimizer = optim.AdamW(model.parameters(), lr=CONFIG['lr'], weight_decay=CONFIG['weight_decay'])
-    criterion = nn.BCEWithLogitsLoss(pos_weight=CONFIG['pos_weight'])
+    pos_weight = torch.tensor([float(CONFIG['pos_weight'])], device=device)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     history = {'train': [], 'val': []}
     best_val = float('inf')

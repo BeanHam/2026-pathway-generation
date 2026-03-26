@@ -44,9 +44,11 @@ def _load_graph_and_image(folder_path: str):
     img_bgr = cv2.imread(os.path.join(folder_path, 'satellite.png'), cv2.IMREAD_COLOR)
     if img_bgr is None:
         raise FileNotFoundError(os.path.join(folder_path, 'satellite.png'))
-    image_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    image_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)    
+    target_h, target_w = 2771, 2772
+    if image_rgb.shape[0] != target_h or image_rgb.shape[1] != target_w:
+        image_rgb = cv2.resize(image_rgb, (target_w, target_h), interpolation=cv2.INTER_LINEAR)        
     return graph, image_rgb
-
 
 def read_index_file(path: str):
     with open(path, 'r') as f:
