@@ -353,13 +353,13 @@ if __name__ == "__main__":
     models = ["resnet18", "vit_small", "swin_tiny"]*3
     
     datasets = [
-        {
-            "name": "generation_full_data",
-            "data_root": "/data/aiclinic/pathways/generation_full_data/pairs/",
-            "test_txt":  "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "seed_root": "/data/aiclinic/pathways/generation_full_data/segmentation_seeds.json",
-            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_segmentation/",
-        },
+        # {
+        #     "name": "generation_full_data",
+        #     "data_root": "/data/aiclinic/pathways/generation_full_data/pairs/",
+        #     "test_txt":  "/data/aiclinic/pathways/generation_full_data/test.txt",
+        #     "seed_root": "/data/aiclinic/pathways/generation_full_data/segmentation_seeds.json",
+        #     "out_root":  "/data/models/bin/2026_pathway_generation/predictions_segmentation/",
+        # },
         {
             "name": "pathwaybench_seattle",
             "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",

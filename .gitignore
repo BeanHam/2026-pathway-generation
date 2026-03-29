@@ -1,6 +1,5 @@
 .DS_Store
 cache/
 visualizations/
-segmentation/
 .ipynb_checkpoints/
 __pycache__/
