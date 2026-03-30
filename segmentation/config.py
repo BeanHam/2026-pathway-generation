@@ -28,5 +28,5 @@ CONFIG = {
     'prob_threshold':       0.5,
     'seed_top_k':           50,
     'seed_min_distance':    50,
-    'min_component_size':   50,
+    'min_component_size':   50,    
 }

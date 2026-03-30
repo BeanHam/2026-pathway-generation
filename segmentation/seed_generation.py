@@ -36,13 +36,13 @@ if __name__ == '__main__':
             "name": "pathwaybench_seattle",
             "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
             "index_file":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "output_json":  "/data/aiclinic/pathways/pathwaybench_seattle/segmentation_seeds.json",
+            "output_json":  "/data/aiclinic/pathways/pathwaybench_seattle/segmentation_seeds.json",            
         },
         {
             "name": "pathwaybench_dc",
             "data_root": "/data/aiclinic/pathways/pathwaybench_dc/pairs/",
             "index_file":  "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
-            "output_json":  "/data/aiclinic/pathways/pathwaybench_dc/segmentation_seeds.json",
+            "output_json":  "/data/aiclinic/pathways/pathwaybench_dc/segmentation_seeds.json",            
         }
     ]
         

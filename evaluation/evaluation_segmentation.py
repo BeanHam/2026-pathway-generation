@@ -223,26 +223,26 @@ if __name__ == "__main__":
     
     datasets = [
         {
-            "name": "generation_full_data",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_segmentation/",
+            "name": "generation_full_data",            
             "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_segmentation/evaluation_results_10seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_segmentation/",
+            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_segmentation/evaluation_results_10seeds_{M.PROJ}_{M.BUFF_DIS}.csv",            
         },
         {
             "name": "pathwaybench_seattle",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle_segmentation/",
             "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle_segmentation/",
             "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_seattle_segmentation/evaluation_results_10seeds_{M.PROJ}_{M.BUFF_DIS}.csv",            
         },
         {
             "name": "pathwaybench_dc",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_dc_segmentation/",
             "split": "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
-            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_dc_segmentation/evaluation_results_10seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_dc_segmentation/",
+            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_dc_segmentation/evaluation_results_10seeds_{M.PROJ}_{M.BUFF_DIS}.csv",            
         },
     ]
 
-    seeds = 10
+    seeds = 5
 
     for ds in datasets:
         ds_name = ds["name"]
