@@ -3,3 +3,8 @@ cache/
 visualizations/
 .ipynb_checkpoints/
 __pycache__/
+disconnected/
+segmentation_seeding/
+
+## noteboks
+results.ipynb
