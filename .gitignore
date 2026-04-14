@@ -8,3 +8,4 @@ segmentation_seeding/
 
 ## noteboks
 results.ipynb
+evaluation_netracer.py
