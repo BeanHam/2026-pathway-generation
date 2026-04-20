@@ -9,3 +9,6 @@ segmentation_seeding/
 ## noteboks
 results.ipynb
 evaluation_netracer.py
+evaluation_segmentation_seeding.py
+evaluation_segmentation_model.py
+inference_segmentation_seeding.py
