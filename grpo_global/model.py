@@ -1,14 +1,14 @@
-# model.py
 import torch
 import torch.nn as nn
 from torchvision import models
 
-
 def _replace_conv_in_channels(conv: nn.Conv2d, in_ch: int = 4, zero_init_extra: bool = True) -> nn.Conv2d:
+    
     """
     Create a new Conv2d with the same hyperparams but different in_channels.
     Copies pretrained weights for the first 3 channels; initializes extra channel(s) to 0 (or kaiming if desired).
     """
+    
     assert isinstance(conv, nn.Conv2d)
     new_conv = nn.Conv2d(
         in_channels=in_ch,

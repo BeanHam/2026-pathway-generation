@@ -4,11 +4,17 @@ visualizations/
 .ipynb_checkpoints/
 __pycache__/
 disconnected/
-segmentation_seeding/
+mapping/
+rebuttal/
 
 ## noteboks
 results.ipynb
+results_v1.ipynb
+cache_disconnected.py
+evaluation_disconnected.py
 evaluation_netracer.py
-evaluation_segmentation_seeding.py
+evaluation_vecroad.py
+evaluation_segmentation_seeding_iterative.py
 evaluation_segmentation_model.py
-inference_segmentation_seeding.py
+inference_makeup.py
+inference_segmentation_seeding_iterative.py

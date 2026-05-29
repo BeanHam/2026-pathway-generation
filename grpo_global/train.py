@@ -26,7 +26,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--device", type=str, default="cuda:3")
-    parser.add_argument("--fp_lambda", type=float, default=0.0)
     args = parser.parse_args()
     
     # detect DDP

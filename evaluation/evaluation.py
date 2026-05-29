@@ -222,30 +222,27 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     datasets = [
-        # {
-        #     "name": "generation_full_data",
-        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
-        #     "split": "/data/aiclinic/pathways/generation_full_data/test.txt",
-        #     # "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
-        #     "out_csv": f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_5seeds_tile2net_{M.BUFF_DIS}.csv",
-        # },
-        # {
-        #     "name": "pathwaybench_seattle",
-        #     "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-        #     "split": "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-        #     # "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
-        #     "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_5seeds_tile2net_{M.BUFF_DIS}.csv",
-        # },
         {
-            "name": "pathwaybench_dc",
+            "name":      "generation_full_data",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
+            "split":     "/data/aiclinic/pathways/generation_full_data/test.txt",
+            "out_csv":   f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_{M.PROJ}_{M.BUFF_DIS}.csv",
+        },
+        {
+            "name":      "pathwaybench_seattle",
+            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
+            "split":     "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
+            "out_csv":   f"/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_{M.PROJ}_{M.BUFF_DIS}.csv",
+        },
+        {
+            "name":      "pathwaybench_dc",
             "pred_root": "/data/models/bin/2026_pathway_generation/predictions_dc/",
-            "split": "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
-            # "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_dc/evaluation_results_5seeds_{M.PROJ}_{M.BUFF_DIS}.csv",
-            "out_csv": f"/data/models/bin/2026_pathway_generation/predictions_dc/evaluation_results_5seeds_tile2net_{M.BUFF_DIS}.csv",
+            "split":     "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
+            "out_csv":   f"/data/models/bin/2026_pathway_generation/predictions_dc/evaluation_results_{M.PROJ}_{M.BUFF_DIS}.csv",
         },
     ]
 
-    seeds = 5
+    num_seeds = 5
 
     for ds in datasets:
         ds_name = ds["name"]
@@ -301,7 +298,7 @@ if __name__ == "__main__":
                 if not os.path.isdir(tag_dir):
                     continue
 
-                for seed in range(seeds):
+                for seed in range(num_seeds):
                     run_dir = os.path.join(tag_dir, f"seed_{seed}")
                     if not os.path.isdir(run_dir):
                         continue
