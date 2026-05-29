@@ -39,7 +39,6 @@ if __name__ == "__main__":
     if CONFIG["model"].startswith("vit"):
         CONFIG["output_size"] = (224, 224)
     CONFIG["device"] = device
-    CONFIG["fp_lambda"] = float(args.fp_lambda)
 
     reference_path = REFERENCE_DIRS[args.model]
     CONFIG["init_ckpt"] = os.path.join(reference_path, "model_best.pth")

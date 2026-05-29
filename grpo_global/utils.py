@@ -703,7 +703,7 @@ def grpo_train_main(CONFIG, ddp_rank=0, ddp_world_size=1):
 
                 pred_buf = buffered_union_from_edges(traj["edges_xy"], CONFIG["buffer_radius"])
                 stats = overlap_stats_from_unions(gt_buf, pred_buf)
-                reward, _, _ = shaped_reward_option_a(stats, CONFIG["fp_lambda"])
+                reward = stats["iou"]
                 rewards.append(reward)
                 rollouts.append(traj)
                 rollout_stats.append(stats)
@@ -989,7 +989,7 @@ def grpo_train_main_proportion(CONFIG, ddp_rank=0, ddp_world_size=1):
 
                 pred_buf = buffered_union_from_edges(traj["edges_xy"], CONFIG["buffer_radius"])
                 stats = overlap_stats_from_unions(gt_buf, pred_buf)
-                reward, _, _ = shaped_reward_option_a(stats, CONFIG["fp_lambda"])
+                reward = stats["iou"]
                 rewards.append(reward)
                 rollouts.append(traj)
                 rollout_stats.append(stats)
@@ -1319,7 +1319,7 @@ def grpo_train_main_cont(CONFIG, ddp_rank=0, ddp_world_size=1):
 
                     pred_buf = buffered_union_from_edges(traj["edges_xy"], CONFIG["buffer_radius"])
                     stats = overlap_stats_from_unions(gt_buf, pred_buf)
-                    reward, _, _ = shaped_reward_option_a(stats, CONFIG["fp_lambda"])
+                    reward = stats["iou"]
                     rewards.append(reward)
                     rollouts.append(traj)
                     rollout_stats.append(stats)
