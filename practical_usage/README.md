@@ -25,36 +25,8 @@ The practical pipeline has two stages:
 2. **Segmentation-guided TraversRL inference**
    Use the generated seeds to run TraversRL. Since a scene may contain disconnected pathway components, inference follows an iterative coverage procedure: generate from one seed, accept non-overlapping paths, remove nearby covered seeds, and repeat until no uncovered seeds remain.
 
-## Step 1: Generate Seeds
 
-Go to:
-
-```bash
-cd segmentation_seeding
-```
-
-Follow the folder README to:
-
-* configure dataset paths,
-* train the segmentation model,
-* generate `segmentation_seeds.json`.
-
-The seed file stores high-confidence pathway points in both pixel and normalized coordinates.
-
-## Step 2: Run Segmentation-Guided Inference
-
-Go to:
-
-```bash
-cd segmentation_guided_inference
-```
-
-Follow the folder README to:
-
-* configure the TraversRL checkpoint,
-* load `segmentation_seeds.json`,
-* run iterative multi-seed inference,
-* save predicted pathway graphs as GeoJSON files.
+Please follow the README under each folder.
 
 ## Notes
 
