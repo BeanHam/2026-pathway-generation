@@ -83,7 +83,8 @@ Parameter meanings:
 Then run:
 
 ```bash
-python parameter_tuning.py
+torchrun --nproc_per_node=1 parameter_tuning.py  ## single GPUs
+## torchrun --nproc_per_node=4 parameter_tuning.py  ## multiple GPUs
 ```
 
 The script writes `inference_config.json` into the corresponding supervised run folder.
@@ -99,5 +100,5 @@ cd pretraining
 torchrun --nproc_per_node=1 train.py --model resnet18 --accum_graphs 1
 
 # 3. Tune rollout parameters for the trained checkpoint
-python parameter_tuning.py
+torchrun --nproc_per_node=1 parameter_tuning.py
 ```

@@ -62,7 +62,7 @@ Each scene folder should include:
 - `graph.pickle`: a NetworkX graph whose nodes are normalized `(x, y)` coordinates in `[0, 1]^2`;
 - `bbox.json`: geographic bounding box used to export predictions as GeoJSON.
 
-Expected `bbox.json` format `{"bbox": [min_lon, max_lon, min_lat, max_lat]}`.
+Expected `bbox.json` format: `{"bbox": [min_lon, max_lon, min_lat, max_lat]}`.
 
 ## Paper Experiment Workflow
 
