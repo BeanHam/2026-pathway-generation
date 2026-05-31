@@ -10,6 +10,11 @@ practical_usage/
 └── segmentation_guided_inference/  # Run TraversRL from segmentation-derived seeds
 ```
 
+Detailed instructions are provided in each folder:
+
+- [`practical_usage/segmentation_seeding/README.md`](practical_usage/segmentation_seeding/README.md)
+- [`practical_usage/segmentation_guided_inference/README.md`](practical_usage/segmentation_guided_inference/README.md)
+
 ## Workflow
 
 The practical pipeline has two stages:

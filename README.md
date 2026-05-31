@@ -2,8 +2,7 @@
 
 This repository contains research code for **TraversRL**, a vision-conditioned framework for generating connected pedestrian pathway graphs from overhead imagery.
 
-TraversRL treats pedestrian pathway extraction as an iterative graph-generation problem instead of a segmentation-only problem. Given an aerial image and a partial graph canvas, the model predicts direction-distance actions to grow a pedestrian network. The codebase supports:
-
+TraversRL treats pedestrian pathway extraction as an iterative graph-generation problem rather than a segmentation-only problem. Given an aerial image and a partial graph canvas, the model predicts direction-distance actions to grow a pedestrian network. The repository includes code for supervised pretraining, reinforcement-learning fine-tuning, practical segmentation-guided inference, and evaluation.
 
 ## Repository Structure
 
@@ -12,18 +11,21 @@ TraversRL treats pedestrian pathway extraction as an iterative graph-generation 
 ├── pretraining/              # Supervised TraversRL-Pre training and rollout tuning
 ├── grpo_global/              # GRPO fine-tuning with terminal graph-level reward
 ├── grpo_local/               # GRPO fine-tuning with local stepwise reward shaping
-├── segmentation_seeding/     # Segmentation model and seed generation
 ├── evaluation/               # Inference, GeoJSON export, caching, and metrics
+├── practical_usage/          # Deployment-style usage without ground-truth start nodes
+│   ├── segmentation_seeding/          # Train segmentation model and generate seed points
+│   └── segmentation_guided_inference/ # Run TraversRL from segmentation-derived seeds
 ├── requirements.txt          # Python dependencies
 └── README.md
 ```
 
-Detailed usage for the three training stages is documented inside each folder:
+Detailed instructions are provided in each folder:
 
 - [`pretraining/README.md`](pretraining/README.md)
 - [`grpo_global/README.md`](grpo_global/README.md)
 - [`grpo_local/README.md`](grpo_local/README.md)
-
+- [`evaluation/README.md`](evaluation/README.md)
+- [`practical_usage/README.md`](practical_usage/README.md)
 
 ## Environment Setup
 
@@ -34,7 +36,7 @@ conda create -n traversrl python=3.10 -y
 conda activate traversrl
 ```
 
-Install the dependencies:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -69,13 +71,34 @@ Expected `bbox.json` format:
 {"bbox": [min_lon, max_lon, min_lat, max_lat]}
 ```
 
-## Overall Workflow
+## Paper Experiment Workflow
 
-A typical experiment follows this order:
+Our paper-experiments follow this order:
 
-1. Update dataset/checkpoint paths in config files.
+1. Update dataset/checkpoint paths in the relevant config files.
 2. Train the supervised reference model in `pretraining/`.
 3. Tune rollout parameters with `pretraining/parameter_tuning.py`.
-4. Fine-tune with global reward in `grpo_global/` or fine-tune with local reward shaping in `grpo_local/`.
-5. Optionally train the segmentation seed model in `segmentation_seeding/`.
-6. Run inference and evaluation from `evaluation/`. 
+5. Fine-tune with global reward in `grpo_global/` or local reward shaping in `grpo_local/`.
+6. Run inference and evaluation from `evaluation/`.
+
+This workflow is designed for controlled evaluation and uses ground-truth graph nodes as starting points during inference/evaluation.
+
+
+## Practical Usage Workflow
+
+In practice, ground-truth start nodes are unavailable. The `practical_usage/` folder provides a deployment-style workflow:
+
+1. Train a segmentation model and generate high-confidence pathway seeds in `practical_usage/segmentation_seeding/`.
+2. Run segmentation-guided TraversRL inference in `practical_usage/segmentation_guided_inference/`.
+
+The segmentation-guided inference code uses an iterative coverage procedure: it starts from one seed, generates a path, accepts non-overlapping generations, removes covered seeds, and repeats until no uncovered seeds remain. This allows the system to handle scenes with multiple disconnected pathway components.
+
+## Evaluation
+
+Evaluation code is in `evaluation/`. It supports:
+
+- GeoJSON prediction export;
+- buffered IoU;
+- TravSim / traversability similarity;
+- graph statistics;
+- ground-truth caching for faster repeated evaluation over the same dataset split.
