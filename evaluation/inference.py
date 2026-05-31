@@ -322,52 +322,24 @@ def load_inference_config(path: str):
         return json.load(f)
 
 
-if __name__ == "__main__":
-    logs = [
-        # ------------------------------
-        # pretraining
-        # ------------------------------
-        '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
-        '/data/models/bin/2026_pathway_generation/reference_logs/vit_small_20260217_102936/',
-        '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
-                
-        # ------------------------------
-        # grpo (global)
-        # ------------------------------
-        '/data/models/bin/2026_pathway_generation/grpo_logs/resnet18_20260218_230403/',
-        '/data/models/bin/2026_pathway_generation/grpo_logs/vit_small_20260218_230534/',
-        '/data/models/bin/2026_pathway_generation/grpo_logs/swin_tiny_20260218_142801_cont/',
-        
-        # ------------------------------
-        # grpo (local)
-        # ------------------------------                
-        "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/resnet18_20260223_150201",
-        "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/vit_small_20260224_171845",
-        "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/swin_tiny_20260224_210832",
-    ]
-    models = ["resnet18", "vit_small", "swin_tiny"]*3
-    num_seeds = 5
+LOGS = [    
+    '/path/to/reference_logs/resnet18/',
+    '/path/to/grpo_global_logs/resnet18/',
+    '/path/to/grpo_local_logs/resnet18/'
     
-    datasets = [
-        {
-            "name":      "generation_full_data",
-            "data_root": "/data/aiclinic/pathways/generation_full_data/pairs/",
-            "test_txt":  "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_root":  "/data/models/bin/2026_pathway_generation/predictions/",
-        },
-        {
-            "name":      "pathwaybench_seattle",
-            "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
-            "test_txt":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-        },
-        {
-            "name":      "pathwaybench_dc",
-            "data_root": "/data/aiclinic/pathways/pathwaybench_dc/pairs/",
-            "test_txt":  "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
-            "out_root":  "/data/models/bin/2026_pathway_generation/predictions_dc/",
-        }
-    ]
+]
+MODELS = ["resnet18"]*3
+DATASETS = [
+    {
+        "name":      "DATASET_NAME",
+        "data_root": "/path/to/DATASET_ROOT/pairs/",
+        "test_txt":  "/path/to/DATASET_ROOT/test.txt",
+        "out_root":  "/path/to/save/predictions/",
+    },
+]
+NUM_SEEDS = 5    
+
+if __name__ == "__main__":
 
     use_ddp = ("WORLD_SIZE" in os.environ) and (int(os.environ["WORLD_SIZE"]) > 1)
     if use_ddp:
@@ -378,7 +350,7 @@ if __name__ == "__main__":
         rank, world_size = 0, 1
         device = "cuda:0"
 
-    for ds in datasets:
+    for ds in DATASETS:
         out_root = ds["out_root"]
         if rank == 0:
             os.makedirs(out_root, exist_ok=True)
@@ -398,10 +370,10 @@ if __name__ == "__main__":
         test_indices = load_indices(ds["test_txt"])
         my_indices = shard_list(test_indices, rank, world_size)
 
-        for run_dir, model_name in zip(logs, models):
+        for run_dir, model_name in zip(LOGS, MODELS):
             
-            if "steps_additive" in run_dir: tag = "step"
-            elif "grpo_logs" in run_dir: tag = "grpo"
+            if "grpo_local" in run_dir: tag = "local"
+            elif "grpo_global" in run_dir: tag = "global"
             else: tag = "base"
             
             infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config.json"))
@@ -427,7 +399,7 @@ if __name__ == "__main__":
                 m.apply(freeze_bn)
 
             # seeds
-            for seed in range(num_seeds):
+            for seed in range(NUM_SEEDS):
                 out_dir = os.path.join(out_root, model_name, tag, f"seed_{seed}")
                 os.makedirs(out_dir, exist_ok=True)
 

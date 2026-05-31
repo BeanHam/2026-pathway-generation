@@ -203,6 +203,14 @@ def load_or_build_gt_cache_for_idx(idx: str, gt_path: str, cache_dir: str, verbo
     return True
 
 
+DATASETS = [
+    {
+        "name":      "DATASET_NAME",
+        "pred_root": "/path/to/save/predictions/",
+        "split":     "/path/to/DATASET_ROOT/test.txt",
+    },
+]
+
 # ============================
 # Main: cache-only across datasets
 # ============================
@@ -210,26 +218,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
-
-    datasets = [
-        {
-            "name":      "generation_full_data",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
-            "split":     "/data/aiclinic/pathways/generation_full_data/test.txt",
-        },
-        {
-            "name":      "pathwaybench_seattle",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-            "split":     "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-        },
-        {
-            "name":      "pathwaybench_dc",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_dc/",
-            "split":     "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
-        },
-    ]
-
-    for ds in datasets:
+    
+    for ds in DATASETS:
         pred_root = ds["pred_root"]
         split_path = ds["split"]
         ds_name = ds["name"]

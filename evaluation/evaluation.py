@@ -213,6 +213,17 @@ def evaluate_one_run(run_dir: str, split_indices: list, cache_dir: str, *, verbo
     return out
 
 
+DATASETS = [
+    {
+        "name":      "DATASET_NAME",
+        "pred_root": "/path/to/save/predictions/",
+        "split":     "/path/to/DATASET_ROOT/test.txt",
+        "out_csv":   f"/path/to/save/predictions/evaluation_results_{M.PROJ}_{M.BUFF_DIS}.csv",
+    },
+]
+NUM_SEEDS = 5
+
+
 # ============================
 # Main
 # ============================
@@ -220,31 +231,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
-    
-    datasets = [
-        {
-            "name":      "generation_full_data",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions/",
-            "split":     "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "out_csv":   f"/data/models/bin/2026_pathway_generation/predictions/evaluation_results_{M.PROJ}_{M.BUFF_DIS}.csv",
-        },
-        {
-            "name":      "pathwaybench_seattle",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_seattle/",
-            "split":     "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "out_csv":   f"/data/models/bin/2026_pathway_generation/predictions_seattle/evaluation_results_{M.PROJ}_{M.BUFF_DIS}.csv",
-        },
-        {
-            "name":      "pathwaybench_dc",
-            "pred_root": "/data/models/bin/2026_pathway_generation/predictions_dc/",
-            "split":     "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
-            "out_csv":   f"/data/models/bin/2026_pathway_generation/predictions_dc/evaluation_results_{M.PROJ}_{M.BUFF_DIS}.csv",
-        },
-    ]
 
-    num_seeds = 5
-
-    for ds in datasets:
+    for ds in DATASETS:
         ds_name = ds["name"]
         pred_root = ds["pred_root"]
         split_path = ds["split"]
@@ -298,7 +286,7 @@ if __name__ == "__main__":
                 if not os.path.isdir(tag_dir):
                     continue
 
-                for seed in range(num_seeds):
+                for seed in range(NUM_SEEDS):
                     run_dir = os.path.join(tag_dir, f"seed_{seed}")
                     if not os.path.isdir(run_dir):
                         continue

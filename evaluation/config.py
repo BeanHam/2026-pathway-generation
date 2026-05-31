@@ -1,11 +1,11 @@
 CONFIG = {
     # Path Information
-    'data_root':              '/data/aiclinic/pathways/generation_full_data/pairs/',
-    'train_index':            '/data/aiclinic/pathways/generation_full_data/train.txt',
-    'val_index':              '/data/aiclinic/pathways/generation_full_data/val.txt',
-    'save_path':              '/data/models/bin/2026_pathway_generation/grpo_logs/',
+    'data_root':              '/path/to/DATASET_ROOT/pairs/',
+    'train_index':            '/path/to/DATASET_ROOT/train.txt',
+    'val_index':              '/path/to/DATASET_ROOT/val.txt',
+    'save_path':              '/path/to/save/grpo_global_logs/',
     'seed':                   0,
-    
+        
     # Model Params
     'model':                  "resnet18",
     'num_angles':             36,        
@@ -36,8 +36,4 @@ CONFIG = {
     # Sampling Parameters (Tunable)
     'seed_strategy':          'gt_random',
     'seeds_per_graph':        1,
-}
-
-REFERENCE_DIRS = {
-    "swin_tiny":       "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
 }
