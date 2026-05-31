@@ -39,7 +39,5 @@ CONFIG = {
 }
 
 REFERENCE_DIRS = {
-    "swin_tiny":      "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/",
     "resnet18":       "/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/",
-    "vit_small":      "/data/models/bin/2026_pathway_generation/reference_logs/vit_small_20260217_102936/"
 }
