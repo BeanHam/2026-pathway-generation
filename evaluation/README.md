@@ -27,7 +27,7 @@ DATASET_ROOT/
 └── test.txt
 ```
 
-Each trained run directory used for inference should contain:
+Each trained (pretraining or grpo) model directory used for inference should contain:
 
 ```text
 RUN_DIR/
@@ -39,17 +39,19 @@ RUN_DIR/
 
 ## 1. Configure Inference
 
-Before running inference, edit the lists near the bottom of `inference.py`:
+Before running inference, edit the logs and datasets information in `inference.py`:
 
 ```python
+
+## paths to trained models
 LOGS = [
     "REFERENCE_RUN_DIR/",
     "GRPO_GLOBAL_RUN_DIR/",
     "GRPO_LOCAL_RUN_DIR/",
 ]
-
 MODELS = ["resnet18", "resnet18", "resnet18"]
 
+## evaluation datasets
 DATASETS = [
     {
         "name": "DATASET_NAME",
@@ -64,16 +66,9 @@ The script uses the checkpoint in each run directory and writes predictions unde
 
 ## 2. Run Inference
 
-Single GPU:
-
 ```bash
-python inference.py
-```
-
-Distributed/sharded inference:
-
-```bash
-torchrun --nproc_per_node=4 inference.py
+torchrun --nproc_per_node=1 inference.py     ## single GPU
+## torchrun --nproc_per_node=4 inference.py  ## multiple GPUs
 ```
 
 The output structure is:
