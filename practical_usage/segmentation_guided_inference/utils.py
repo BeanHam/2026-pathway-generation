@@ -16,7 +16,7 @@ from functools import lru_cache
 from shapely.ops import unary_union
 from shapely.geometry import LineString
 
-from infer_model import PathwayModel
+from model import PathwayModel
 
 
 # ============================================================

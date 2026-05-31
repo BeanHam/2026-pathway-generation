@@ -37,7 +37,3 @@ CONFIG = {
     'seed_strategy':          'gt_random',
     'seeds_per_graph':        1,
 }
-
-REFERENCE_DIRS = {
-    "swin_tiny":       "/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260206_130501/",
-}
