@@ -12,7 +12,7 @@ practical_usage/
 
 Detailed instructions are provided in each folder:
 
-- [`segmentation_seeding/README.md`](segmentation_seeding/README.md)
+- [`segmentation_guided_seeding/README.md`](segmentation_guided_seeding/README.md)
 - [`segmentation_guided_inference/README.md`](segmentation_guided_inference/README.md)
 
 ## Workflow
