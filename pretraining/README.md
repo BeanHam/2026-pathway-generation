@@ -40,13 +40,7 @@ cd pretraining
 torchrun --nproc_per_node=1 train.py --model resnet18 --accum_graphs 1
 
 ## supported models:
-{resnet18, resnet50, convnext_tiny, convnext_small, swin_tiny, swin_small, vit_tiny, vit_small, vit_b_16}
-```
-
-Common model names include:
-
-```text
-{resnet18, resnet50, convnext_tiny, convnext_small, swin_tiny, swin_small, vit_tiny, vit_small, vit_b_16}
+## {resnet18, resnet50, convnext_tiny, convnext_small, swin_tiny, swin_small, vit_tiny, vit_small, vit_b_16}
 ```
 
 ## Outputs
@@ -72,9 +66,35 @@ After supervised training, run:
 python parameter_tuning.py
 ```
 
-This script searches validation-time rollout parameters such as top-k action selection, restart count, stop threshold, and maximum node expansions.
+This script selects inference-time rollout parameters on validation scenes by maximizing buffered IoU. Before running, edit the hard-coded validation path and checkpoint list inside `parameter_tuning.py`:
 
-Before running, edit the hard-coded validation path and checkpoint list inside `parameter_tuning.py`. The script writes:
+```python
+LOGS = ["/path/to/reference_logs/resnet18_run/"]
+VAL_PATH = "/path/to/val.txt"
+RESTART_GRID = (1, 5)
+TOPK_GRID = (5, 10)
+STOP_PROB_GRID = (0.4, 0.5, 0.6, 0.7)
+MAX_EXPAND_GRID = (4, 6, 8)
+```
+
+Parameter meanings:
+
+- `LOGS`: supervised run folders to tune. Each folder should contain `model_best.pth` and `run_config.json`.
+- `VAL_PATH`: validation scene index used for tuning.
+- `RESTART_GRID`: candidate values for `restarts_per_graph`. Each restart runs a full rollout from a newly sampled start node; the script keeps the rollout with the highest internal confidence score. Larger values improve robustness but increase runtime.
+- `TOPK_GRID`: candidate values for `topk`. At each step, the rollout considers the top-`k` actions by logit and executes the first valid action. `topk=1` is greedy decoding; larger values allow backoff when the top action is invalid, repeated, or an under-threshold `Stop`.
+- `STOP_PROB_GRID`: candidate values for `stop_prob_thresh`. `Stop` is accepted only when its probability is at least this threshold. Higher values make the model less likely to stop early; lower values make shorter rollouts more likely.
+- `MAX_EXPAND_GRID`: candidate values for `max_expand_per_node`. This limits how many outgoing actions can be generated from one node. Larger values allow more branching but can add noisy edges.
+
+Additional fixed tuning arguments inside the script include:
+
+- `seed_strategy="gt_random"`: sample the start node from the ground-truth graph during validation tuning.
+- `seeds_per_graph=1`: number of initial seeds per rollout.
+- `buffer_radius=0.01`: normalized buffer radius used for validation IoU.
+- `max_graphs=200`: maximum number of validation graphs used during tuning. Lower this for faster tuning or set it to `None` to use all validation graphs.
+- `rng_seed=0`: random seed for deterministic start-node and subset sampling.
+
+The script writes:
 
 ```text
 inference_config.json

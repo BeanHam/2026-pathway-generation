@@ -495,6 +495,17 @@ def tune_inference_hparams_ddp(
     return None, None, None
 
 
+
+
+LOGS = [
+    '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
+]
+VAL_PATH = "/data/aiclinic/pathways/generation_full_data/val.txt"
+RESTART_GRID=(1, 5),
+TOPK_GRID=(5, 10),
+STOP_PROB_GRID=(0.4, 0.5, 0.6, 0.7),
+MAX_EXPAND_GRID=(4, 6, 8),
+
 # ----------------------------
 # Main (torchrun)
 # ----------------------------
@@ -507,20 +518,10 @@ if __name__ == "__main__":
         rank, world_size = 0, 1
         device = "cuda:0"
 
-    logs = [
-        '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260211_220834_0.2/',
-        '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154110_0.4_cont/',
-        '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_234446_0.6_cont/',
-        '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260213_154830_0.8_cont/',
-        '/data/models/bin/2026_pathway_generation/reference_logs/swin_tiny_ddp_graph_20260212_123147_cont/',
-        '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
-        '/data/models/bin/2026_pathway_generation/reference_logs/vit_small_20260217_102936/',
-    ]
-
-    with open("/data/aiclinic/pathways/generation_full_data/val.txt", "r") as f:
+    with open(VAL_PATH, "r") as f:
         val_indices = [line.strip() for line in f if line.strip()]
 
-    for log in logs:
+    for log in LOGS:
         # load run config
         with open(os.path.join(log, "run_config.json"), "r") as f:
             config = json.load(f)
@@ -549,10 +550,10 @@ if __name__ == "__main__":
             seeds_per_graph=1,
             buffer_radius=0.01,
             rng_seed=0,
-            restarts_grid=(1, 5),
-            topk_grid=(5, 10),
-            stop_prob_grid=(0.4, 0.5, 0.6, 0.7),
-            max_expand_grid=(4, 6, 8),
+            restarts_grid=RESTART_GRID,
+            topk_grid=TOPK_GRID,
+            stop_prob_grid=STOP_PROB_GRID,
+            max_expand_grid=MAX_EXPAND_GRID,
             max_graphs=200,
             rank=rank,
             world_size=world_size,
