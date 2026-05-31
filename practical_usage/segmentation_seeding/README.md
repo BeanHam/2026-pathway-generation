@@ -121,11 +121,6 @@ torchrun --nproc_per_node=1 train.py --model swin_tiny
 # 3. Edit seed_generation.py dataset paths
 
 # 4. Generate seeds
-python seed_generation.py \
-  --checkpoint /path/to/model_best.pth \
-  --model swin_tiny \
-  --threshold 0.5 \
-  --k 200 \
-  --min_distance 50
+python seed_generation.py --threshold 0.5 --k 200 --min_distance 50
 
 ```
