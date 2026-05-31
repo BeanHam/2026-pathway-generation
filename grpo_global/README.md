@@ -40,8 +40,6 @@ CONFIG["save_path"] = "/path/to/save/grpo_logs/"
 REFERENCE_DIRS = {
     "resnet18": "/path/to/reference_logs/resnet18/",
 }
-
-## Make sure the selected model exists in REFERENCE_DIRS and that the corresponding reference folder contains both `model_best.pth` and `inference_config.json`.
 ```
 
 ## Run Training
