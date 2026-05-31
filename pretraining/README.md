@@ -17,7 +17,7 @@ pretraining/
 
 ## Configure Paths
 
-Edit `pretraining/config.py` before running:
+Edit path information in `pretraining/config.py` before running:
 
 ```python
 CONFIG = {
@@ -28,8 +28,6 @@ CONFIG = {
     ...
 }
 ```
-
-The default code uses absolute paths from the original experiment environment, so these paths must be changed for a new machine.
 
 ## Train TraversRL-Pre
 
@@ -59,7 +57,7 @@ reference_logs/
 
 ## Rollout-Parameter Tuning
 
-After supervised training, we need to select inference-time rollout parameters on validation scenes by maximizing buffered IoU. Edit the validation path, checkpoint list, and parameter values inside `parameter_tuning.py`:
+After supervised training, we select inference-time rollout parameters on validation scenes by maximizing buffered IoU. Edit the validation path, checkpoint list, and parameter values inside `parameter_tuning.py`:
 
 ```python
 LOGS = ["/path/to/reference_logs/resnet18/"]
