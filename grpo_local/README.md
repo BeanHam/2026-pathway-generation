@@ -41,7 +41,7 @@ CONFIG["val_index"] = "/path/to/DATASET_ROOT/val.txt"
 CONFIG["save_path"] = "/path/to/save/grpo_local_logs/"
 
 REFERENCE_DIRS = {
-    "resnet18": "/path/to/reference_logs/resnet18_run/",
+    "resnet18": "/path/to/reference_logs/resnet18/",
 }
 ```
 
