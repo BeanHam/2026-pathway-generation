@@ -15,7 +15,7 @@ segmentation_seeding/
 
 ## Configure Paths
 
-Edit `segmentation_seeding/config.py` before running:
+Edit path information in `config.py` before running:
 
 ```python
 CONFIG = {
@@ -44,11 +44,10 @@ DATASET_ROOT/
 
 ## Train the Segmentation Model
 
-`train.py` uses distributed training, so launch it with `torchrun` even for one GPU:
-
 ```bash
 cd segmentation_seeding
-torchrun --nproc_per_node=1 train.py --model swin_tiny
+torchrun --nproc_per_node=1 train.py --model swin_tiny     ## single GPU
+## torchrun --nproc_per_node=1 train.py --model swin_tiny  ## multiple GPUs
 
 ## supported models:
 ## {swin_tiny, swin_small}
@@ -72,6 +71,8 @@ segmentation_logs/
 Before running seed generation, edit both `DATASETS` and `CHECKPOINT` directly in `seed_generation.py`:
 
 ```python
+
+## evaluation datasets
 DATASETS = [
     {
         "name":        "DATASET_NAME",
@@ -80,8 +81,9 @@ DATASETS = [
         "output_json": "/path/to/DATASET_ROOT/segmentation_seeds.json",
     },
 ]
-
 MODEL_NAME = "swin_tiny"
+
+## segmentation model checkpoint
 CHECKPOINT = "/path/to/save/segmentation_logs/<model_name>/model_best.pth"
 ```
 
@@ -107,20 +109,4 @@ The script saves a JSON file with pixel-space and normalized seed coordinates:
     "scores": [score, ...]
   }
 }
-```
-
-## Typical Flow
-
-```bash
-# 1. Edit segmentation_seeding/config.py
-cd segmentation_seeding
-
-# 2. Train segmentation model
-torchrun --nproc_per_node=1 train.py --model swin_tiny
-
-# 3. Edit seed_generation.py dataset paths
-
-# 4. Generate seeds
-python seed_generation.py --threshold 0.5 --k 200 --min_distance 50
-
 ```
