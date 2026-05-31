@@ -38,18 +38,15 @@ The default code uses absolute paths from the original experiment environment, s
 ```bash
 cd pretraining
 torchrun --nproc_per_node=1 train.py --model resnet18 --accum_graphs 1
+
+## supported models:
+{resnet18, resnet50, convnext_tiny, convnext_small, swin_tiny, swin_small, vit_tiny, vit_small, vit_b_16}
 ```
 
 Common model names include:
 
 ```text
 {resnet18, resnet50, convnext_tiny, convnext_small, swin_tiny, swin_small, vit_tiny, vit_small, vit_b_16}
-```
-
-The paper primarily uses:
-
-```text
-resnet18, vit_small, swin_tiny
 ```
 
 ## Outputs

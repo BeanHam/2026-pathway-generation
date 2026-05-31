@@ -40,18 +40,6 @@ Install the dependencies:
 pip install -r requirements.txt
 ```
 
-If `cv2` installation fails, install OpenCV directly:
-
-```bash
-pip install opencv-python
-```
-
-For geospatial dependencies, `conda-forge` is often more reliable:
-
-```bash
-conda install -c conda-forge geopandas shapely fiona pyproj osmnx -y
-```
-
 ## Expected Data Format
 
 The code expects a dataset root containing scene folders listed by index files.
@@ -89,5 +77,5 @@ A typical experiment follows this order:
 2. Train the supervised reference model in `pretraining/`.
 3. Tune rollout parameters with `pretraining/parameter_tuning.py`.
 4. Fine-tune with global reward in `grpo_global/` or fine-tune with local reward shaping in `grpo_local/`.
-5. Optionally train the segmentation seed model in `segmentation_seeding/` and generate seeds for inference.
+5. Optionally train the segmentation seed model in `segmentation_seeding/`.
 6. Run inference and evaluation from `evaluation/`. 
