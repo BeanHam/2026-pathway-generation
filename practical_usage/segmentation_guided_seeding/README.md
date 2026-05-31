@@ -45,7 +45,7 @@ DATASET_ROOT/
 ## Train the Segmentation Model
 
 ```bash
-cd segmentation_seeding
+cd segmentation_guided_seeding
 torchrun --nproc_per_node=1 train.py --model swin_tiny     ## single GPU
 ## torchrun --nproc_per_node=1 train.py --model swin_tiny  ## multiple GPUs
 
@@ -64,7 +64,7 @@ segmentation_logs/
     └── run_config.json
 ```
 
-`model_best.pth` is the checkpoint used by `seed_generation.py`.
+`model_best.pth` is the checkpoint to be used by `seed_generation.py`.
 
 ## Generate Segmentation-Derived Seeds
 

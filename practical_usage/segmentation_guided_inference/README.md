@@ -21,11 +21,7 @@ Before running this folder, you should already have:
 
 1. **Trained TraversRL checkpoints** from `pretraining/`, `grpo_global/`, or `grpo_local/`.
 2. **Rollout configs**: each run folder should contain `inference_config.json`, produced by `pretraining/parameter_tuning.py`.
-3. **Segmentation seed file** from `segmentation_seeding/seed_generation.py`, typically:
-
-```text
-DATASET_ROOT/segmentation_seeds.json
-```
+3. **Segmentation seed file** from `segmentation_seeding/seed_generation.py`, typically: `DATASET_ROOT/segmentation_seeds.json`
 
 The seed file should map each scene id to candidate seed points:
 
@@ -39,24 +35,13 @@ The seed file should map each scene id to candidate seed points:
 }
 ```
 
-The dataset root should contain scene folders:
-
-```text
-DATASET_ROOT/pairs/
-├── <scene_id>/
-│   ├── satellite.png
-│   ├── graph.pickle
-│   └── bbox.json
-└── ...
-```
-
-`bbox.json` is used to convert normalized graph coordinates back to longitude/latitude GeoJSON.
-
 ## Path Setup
 
-Edit the module-level lists in `inference.py`:
+Edit the logs and datasets information in `inference.py`:
 
 ```python
+
+## paths to trained models
 LOGS = [
     "/path/to/reference_logs/resnet18/",
     "/path/to/grpo_global_logs/resnet18/",
@@ -64,6 +49,7 @@ LOGS = [
 ]
 MODELS = ["resnet18", "resnet18", "resnet18"]
 
+## evaluation datasets
 DATASETS = [
     {
         "name":      "DATASET_NAME",
@@ -118,16 +104,10 @@ Adjust `coverage_buffer_radius_px` if your image resolution or physical scale di
 
 ## Run Inference
 
-Single GPU:
-
 ```bash
-python inference.py
-```
-
-Single GPUs:
-
-```bash
-torchrun --nproc_per_node=4 inference.py
+cd segmentation_guided_inference
+torchrun --nproc_per_node=1 inference.py     ## single GPUs
+## torchrun --nproc_per_node=4 inference.py  ## multiple GPUs
 ```
 
 ## Outputs
