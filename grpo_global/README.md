@@ -1,33 +1,37 @@
 # GRPO Global Reward Fine-Tuning (`grpo_global/`)
 
-This folder trains **TraversRL-Global**, initialized from a supervised `TraversRL-Pre` checkpoint and fine-tuned with GRPO using a terminal graph-level reward.
+This folder trains **TraversRL-Global**, the RL fine-tuned version of TraversRL that optimizes a terminal graph-level reward.
 
-For each training graph, the policy samples a group of rollouts. Each rollout is decoded into a predicted pathway graph and scored using a graph-level reward such as buffered IoU. Rewards are converted into group-relative advantages, and the policy is updated with an advantage-weighted objective plus KL regularization to the frozen supervised reference policy.
+Training starts from a supervised `TraversRL-Pre` checkpoint. For each training scene, the policy samples a group of rollouts, converts each rollout into a predicted pathway graph, scores each graph with buffered IoU, and converts the rollout rewards into group-relative advantages. The policy is then updated with an advantage-weighted log-likelihood objective plus KL regularization to the frozen supervised reference policy.
+
+Intuitively, positive advantages increase the likelihood of actions from above-average rollouts, while negative advantages decrease the likelihood of actions from below-average rollouts. The KL term prevents the policy from drifting too far from the supervised pretrained model.
 
 ## Files
 
 ```text
 grpo_global/
-├── config.py      # dataset paths, reference checkpoints, GRPO hyperparameters
-├── model.py       # PathwayModel architecture
-├── utils.py       # rollout, reward computation, GRPO training utilities
-└── train.py       # global-reward GRPO training entry point
+├── config.py      # dataset paths, reference checkpoint paths, and GRPO hyperparameters
+├── model.py       # PathwayModel with 4-channel RGB+canvas input
+├── utils.py       # rollout collection, buffered-IoU reward, GRPO update, validation
+├── train.py       # GRPO-global training entry point
+└── README.md
 ```
 
 ## Prerequisites
 
-Run supervised pretraining first. Each reference directory in `REFERENCE_DIRS` must contain:
+Run supervised pretraining first. Each pretrained reference folder must contain:
 
 ```text
 model_best.pth
-inference_config.json   ## from rollout parameter tuning
+inference_config.json
 ```
 
-`model_best.pth` initializes the policy and frozen reference model. `inference_config.json` provides the rollout parameters selected during validation tuning.
+- `model_best.pth` initializes both the trainable policy and the frozen reference policy.
+- `inference_config.json` stores rollout parameters selected by `pretraining/parameter_tuning.py`.
 
 ## Configure Paths
 
-Edit `grpo_global/config.py`:
+Edit `grpo_global/config.py` before training:
 
 ```python
 CONFIG["data_root"] = "/path/to/DATASET_ROOT/pairs/"
@@ -37,8 +41,6 @@ CONFIG["save_path"] = "/path/to/save/grpo_logs/"
 
 REFERENCE_DIRS = {
     "resnet18": "/path/to/reference_logs/resnet18_run/",
-    "vit_small": "/path/to/reference_logs/vit_small_run/",
-    "swin_tiny": "/path/to/reference_logs/swin_tiny_run/",
 }
 ```
 
@@ -51,32 +53,31 @@ cd grpo_global
 python train.py --model resnet18 --device cuda:0
 ```
 
-Multi-GPU:
+Multi-GPU with DDP:
 
 ```bash
+cd grpo_global
 torchrun --nproc_per_node=4 train.py --model resnet18
-```
-
-`train.py` reads rollout settings from `inference_config.json`:
-
-```python
-"topk"
-"restarts_per_graph"
-"stop_prob_thresh"
-"max_expand_per_node"
 ```
 
 ## Outputs
 
-Training writes checkpoints and logs under `CONFIG["save_path"]`. The exact run directory is created inside the GRPO training utility.
+Each run creates a timestamped directory under `CONFIG["save_path"]`, for example:
 
-Typical output files include model checkpoints, logs, and validation summaries. The best checkpoint can then be used by `evaluation/inference.py`.
+```text
+grpo_logs/
+└── resnet18_YYYYMMDD_HHMMSS/
+    ├── run_config.json
+    ├── history.json
+    ├── model_last.pth
+    └── model_best.pth
+```
 
 ## Typical Global-GRPO Flow
 
 ```bash
 # 1. Train TraversRL-Pre in ../pretraining
-# 2. Run parameter_tuning.py so the reference folder has inference_config.json
+# 2. Run ../pretraining/parameter_tuning.py to create inference_config.json
 # 3. Edit grpo_global/config.py and REFERENCE_DIRS
 cd grpo_global
 python train.py --model resnet18 --device cuda:0
