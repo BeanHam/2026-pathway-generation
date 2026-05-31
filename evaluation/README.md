@@ -67,6 +67,7 @@ The script uses the checkpoint in each run directory and writes predictions unde
 ## 2. Run Inference
 
 ```bash
+cd evaluation
 torchrun --nproc_per_node=1 inference.py     ## single GPU
 ## torchrun --nproc_per_node=4 inference.py  ## multiple GPUs
 ```
@@ -111,7 +112,7 @@ The cache uses the projection and buffer settings defined in metrics.py:
 PROJ = "epsg:26910"
 BUFF_DIS = 1  # in meters
 ```
-`BUFF_DIS` controls the buffer distance used when converting pathway lines into buffered regions for geometry-based metrics such as IoU. The default value is 1 meter, matching the paper evaluation. You can adjust this value in metrics.py if you want to evaluate with a stricter or more relaxed buffer size. After changing BUFF_DIS, rebuild the cache so the cached ground-truth geometry matches the new buffer setting.
+`BUFF_DIS` controls the buffer distance used when converting pathway lines into buffered regions for geometry-based metrics such as IoU. The default value is 1 meter, matching the paper evaluation. You can adjust this value in `metrics.py` if you want to evaluate with a stricter or more relaxed buffer size. After changing BUFF_DIS, rebuild the cache so the cached geometry matches the new buffer setting.
 
 Then run:
 
