@@ -69,7 +69,7 @@ python parameter_tuning.py
 This script selects inference-time rollout parameters on validation scenes by maximizing buffered IoU. Before running, edit the hard-coded validation path and checkpoint list inside `parameter_tuning.py`:
 
 ```python
-LOGS = ["/path/to/reference_logs/resnet18_run/"]
+LOGS = ["/path/to/reference_logs/resnet18/"]
 VAL_PATH = "/path/to/val.txt"
 RESTART_GRID = (1, 5)
 TOPK_GRID = (5, 10)
@@ -100,12 +100,8 @@ The script writes:
 inference_config.json
 ```
 
-into the corresponding supervised run folder. Both `grpo_global/` and `grpo_local/` expect the reference folder to contain:
+into the corresponding supervised run folder.
 
-```text
-model_best.pth
-inference_config.json
-```
 
 ## Typical Pretraining Flow
 
