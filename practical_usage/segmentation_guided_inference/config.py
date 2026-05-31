@@ -3,7 +3,6 @@ CONFIG = {
     'data_root':              '/path/to/DATASET_ROOT/pairs/',
     'train_index':            '/path/to/DATASET_ROOT/train.txt',
     'val_index':              '/path/to/DATASET_ROOT/val.txt',
-    'save_path':              '/path/to/save/grpo_global_logs/',
     'seed':                   0,
         
     # Model Params

@@ -54,23 +54,7 @@ DATASET_ROOT/pairs/
 
 ## Path Setup
 
-Edit `config.py` and replace placeholder paths with your local paths:
-
-```python
-CONFIG = {
-    "data_root": "/path/to/DATASET_ROOT/pairs/",
-    "train_index": "/path/to/DATASET_ROOT/train.txt",
-    "val_index": "/path/to/DATASET_ROOT/val.txt",
-    "save_path": "/path/to/save/inference_outputs/",
-    ...
-}
-
-REFERENCE_DIRS = {
-    "swin_tiny": "/path/to/reference_logs/swin_tiny/",
-}
-```
-
-Then edit the module-level lists in `inference.py`:
+Edit the module-level lists in `inference.py`:
 
 ```python
 LOGS = [
@@ -140,13 +124,11 @@ Single GPU:
 python inference.py
 ```
 
-Distributed/sharded inference:
+Single GPUs:
 
 ```bash
 torchrun --nproc_per_node=4 inference.py
 ```
-
-With DDP, the test scene list is sharded across ranks. Each rank writes predictions for its assigned scenes.
 
 ## Outputs
 
@@ -164,18 +146,3 @@ PREDICTION_ROOT/
 │   └── local/
 └── ...
 ```
-
-For each scene and random seed, the script saves:
-
-- `*_gt.geojson`: ground-truth graph converted to GeoJSON.
-- `*_pred.geojson`: generated prediction after iterative coverage inference.
-- `*_iteration_debug.json`: per-iteration debugging information, including whether each generation was accepted, how many seeds were removed, and whether overlap was detected.
-
-If `save_iteration_geojsons=True`, the script also saves accepted intermediate generations under an `iteration_predictions/` subfolder.
-
-## Notes
-
-- This script uses segmentation seeds, not ground-truth start nodes.
-- The segmentation seed file must contain keys matching the scene ids in `test_txt`.
-- The code resizes images to `2771 x 2772` before inference if needed, matching the original experiment setup.
-- The coverage buffer is defined in pixels, so it should be adjusted for datasets with different image resolution or physical scale.
