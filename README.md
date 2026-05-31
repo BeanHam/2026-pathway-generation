@@ -4,6 +4,10 @@ This repository contains research code for **TraversRL**, a vision-conditioned f
 
 TraversRL treats pedestrian pathway extraction as an iterative graph-generation problem rather than a segmentation-only problem. Given an aerial image and a partial graph canvas, the model predicts direction-distance actions to grow a pedestrian network. The repository includes code for supervised pretraining, reinforcement-learning fine-tuning, practical segmentation-guided inference, and evaluation.
 
+<p align="center">
+  <img src="teaser.png" alt="TraversRL teaser" width="100%">
+</p>
+
 ## Repository Structure
 
 ```text
