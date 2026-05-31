@@ -325,8 +325,7 @@ def load_inference_config(path: str):
 LOGS = [    
     '/path/to/reference_logs/resnet18/',
     '/path/to/grpo_global_logs/resnet18/',
-    '/path/to/grpo_local_logs/resnet18/'
-    
+    '/path/to/grpo_local_logs/resnet18/' 
 ]
 MODELS = ["resnet18"]*3
 DATASETS = [

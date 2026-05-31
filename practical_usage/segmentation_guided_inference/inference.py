@@ -15,9 +15,9 @@ from datetime import timedelta
 from functools import lru_cache
 from shapely.geometry import LineString
 
-from infer_model import PathwayModel
-from infer_utils import crop_image, IterativeEncoder, should_freeze_bn, freeze_bn
-from infer_config import CONFIG
+from model import PathwayModel
+from utils import crop_image, IterativeEncoder, should_freeze_bn, freeze_bn
+from config import CONFIG
 
 
 # ============================================================
@@ -769,24 +769,26 @@ def load_inference_config(path: str):
         return json.load(f)
 
 
+LOGS = [    
+    '/path/to/reference_logs/resnet18/',
+    '/path/to/grpo_global_logs/resnet18/',
+    '/path/to/grpo_local_logs/resnet18/' 
+]
+MODELS = ["resnet18"]*3
+DATASETS = [
+    {
+        "name":      "DATASET_NAME",
+        "data_root": "/path/to/DATASET_ROOT/pairs/",
+        "test_txt":  "/path/to/DATASET_ROOT/test.txt",
+        "seed_root": "/path/to/DATASET_ROOT/segmentation_seeds.json",
+        "out_root":  "/path/to/save/predictions/",
+    },
+]
+
 # ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
-    logs = [
-        "/data/models/bin/2026_pathway_generation/grpo_logs_steps_additive/swin_tiny_20260224_210832",
-    ]
-    models = ["swin_tiny"]
-
-    datasets = [
-        {
-            "name": "disconnected_pairs",
-            "data_root": "/data/aiclinic/pathways/disconnected/pairs/",
-            "test_txt": "/data/aiclinic/pathways/disconnected/test.txt",
-            "seed_root": "/data/aiclinic/pathways/disconnected/segmentation_seeds.json",
-            "out_root":  "/data/models/bin/2026_pathway_generation/disconnected/",
-        }
-    ]
 
     use_ddp = ("WORLD_SIZE" in os.environ) and (int(os.environ["WORLD_SIZE"]) > 1)
     if use_ddp:
@@ -797,7 +799,7 @@ if __name__ == "__main__":
         rank, world_size = 0, 1
         device = "cuda:0"
 
-    for ds in datasets:
+    for ds in DATASETS:
         out_root = ds["out_root"]
         if rank == 0:
             os.makedirs(out_root, exist_ok=True)
@@ -817,13 +819,10 @@ if __name__ == "__main__":
         with open(ds["seed_root"], "r") as f:
             all_starting_points = json.load(f)
 
-        for run_dir, model_name in zip(logs, models):
-            if "steps_additive" in run_dir:
-                tag = "step"
-            elif "grpo_logs" in run_dir:
-                tag = "grpo"
-            else:
-                tag = "base"
+        for run_dir, model_name in zip(LOGS, MODELS):
+            if "grpo_local" in run_dir: tag = "local"
+            elif "grpo_global" in run_dir: tag = "global"
+            else: tag = "base"
 
             infer_cfg = load_inference_config(os.path.join(run_dir, "inference_config.json"))
             infer_cfg["coverage_buffer_radius_px"] = 108   # ~4m on each side
@@ -845,10 +844,7 @@ if __name__ == "__main__":
                 print("Model:", model_name, "| tag:", tag, "| world_size:", world_size)
                 print("-" * 50)
 
-            if model_name in ["swin_tiny_20", "swin_tiny_40", "swin_tiny_60", "swin_tiny_80"]:
-                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name="swin_tiny").to(device)
-            else:
-                m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name).to(device)
+            m = PathwayModel(num_classes=CONFIG["total_classes"], backbone_name=model_name).to(device)
             m.load_state_dict(torch.load(os.path.join(run_dir, "model_best.pth"), map_location=device))
             m.eval()
             if should_freeze_bn(model_name):
