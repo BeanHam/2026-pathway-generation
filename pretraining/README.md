@@ -43,8 +43,7 @@ torchrun --nproc_per_node=1 train.py --model resnet18 --accum_graphs 1
 Common model names include:
 
 ```text
-resnet18, resnet50, convnext_tiny, convnext_small,
-swin_tiny, swin_small, vit_tiny, vit_small, vit_b_16
+{resnet18, resnet50, convnext_tiny, convnext_small, swin_tiny, swin_small, vit_tiny, vit_small, vit_b_16}
 ```
 
 The paper primarily uses:
@@ -52,27 +51,6 @@ The paper primarily uses:
 ```text
 resnet18, vit_small, swin_tiny
 ```
-
-## Important Config Values
-
-Key parameters in `config.py`:
-
-```python
-"num_angles": 36,
-"num_dists": 10,
-"stop_class_idx": 360,
-"total_classes": 361,
-"noise": 0.02,
-"crop_size": 0.5,
-"output_size": (256, 256),
-"max_steps": 200,
-"num_epochs": 50,
-"lr": 1e-4,
-"weight_decay": 1e-4,
-"grad_clip": 1.0,
-```
-
-For ViT models, `train.py` automatically changes `output_size` to `(224, 224)`.
 
 ## Outputs
 

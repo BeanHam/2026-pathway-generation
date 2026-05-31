@@ -88,7 +88,6 @@ A typical experiment follows this order:
 1. Update dataset/checkpoint paths in config files.
 2. Train the supervised reference model in `pretraining/`.
 3. Tune rollout parameters with `pretraining/parameter_tuning.py`.
-4. Fine-tune with global reward in `grpo_global/`.
-5. Fine-tune with local reward shaping in `grpo_local/`.
-6. Optionally train the segmentation seed model in `segmentation_seeding/`.
-7. Run inference and evaluation from `evaluation/`.
+4. Fine-tune with global reward in `grpo_global/` or fine-tune with local reward shaping in `grpo_local/`.
+5. Optionally train the segmentation seed model in `segmentation_seeding/` and generate seeds for inference.
+6. Run inference and evaluation from `evaluation/`. 
