@@ -33,11 +33,10 @@ The default code uses absolute paths from the original experiment environment, s
 
 ## Train TraversRL-Pre
 
-`train.py` initializes distributed training, so use `torchrun` even for a single GPU:
-
 ```bash
 cd pretraining
-torchrun --nproc_per_node=1 train.py --model resnet18 --accum_graphs 1
+torchrun --nproc_per_node=1 train.py --model resnet18 --accum_graphs 1     ## single GPU
+## torchrun --nproc_per_node=4 train.py --model resnet18 --accum_graphs 1  ## multiple GPUs
 
 ## supported models:
 ## {resnet18, resnet50, convnext_tiny, convnext_small, swin_tiny, swin_small, vit_tiny, vit_small, vit_b_16}
@@ -60,13 +59,7 @@ reference_logs/
 
 ## Rollout-Parameter Tuning
 
-After supervised training, run:
-
-```bash
-python parameter_tuning.py
-```
-
-This script selects inference-time rollout parameters on validation scenes by maximizing buffered IoU. Before running, edit the hard-coded validation path and checkpoint list inside `parameter_tuning.py`:
+After supervised training, we need to select inference-time rollout parameters on validation scenes by maximizing buffered IoU. Edit the validation path, checkpoint list, and parameter values inside `parameter_tuning.py`:
 
 ```python
 LOGS = ["/path/to/reference_logs/resnet18/"]
@@ -93,6 +86,12 @@ Additional fixed tuning arguments inside the script include:
 - `buffer_radius=0.01`: normalized buffer radius used for validation IoU.
 - `max_graphs=200`: maximum number of validation graphs used during tuning. Lower this for faster tuning or set it to `None` to use all validation graphs.
 - `rng_seed=0`: random seed for deterministic start-node and subset sampling.
+
+Then run:
+
+```bash
+python parameter_tuning.py
+```
 
 The script writes:
 
