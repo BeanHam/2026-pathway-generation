@@ -30,21 +30,6 @@ inference_config.json
 - `model_best.pth` initializes both the trainable policy and the frozen reference policy.
 - `inference_config.json` stores rollout parameters selected by `pretraining/parameter_tuning.py`.
 
-## Typical Local-GRPO Flow (See Below for Detailed Steps)
-
-```bash
-# 1. Train TraversRL-Pre in ../pretraining
-# 2. Run ../pretraining/parameter_tuning.py to create inference_config.json
-# 3. Edit grpo_local/config.py and REFERENCE_DIRS
-# 4. train
-cd grpo_local
-torchrun --nproc_per_node=1 train.py --model resnet18
-
-# 5. copy inference_config.json
-cp /path/to/reference_logs/resnet18/inference_config.json /path/to/grpo_local_logs/resnet18/inference_config.json
-```
-
-
 ## Configure Paths
 
 Edit path information in `config.py` before training:

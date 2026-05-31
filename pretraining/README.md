@@ -15,19 +15,6 @@ pretraining/
 └── parameter_tuning.py    # rollout-parameter tuning on validation scenes
 ```
 
-## Typical Pretraining Flow (See Below for Detailed Steps)
-
-```bash
-# 1. Edit config.py paths
-cd pretraining
-
-# 2. Train supervised reference model
-torchrun --nproc_per_node=1 train.py --model resnet18 --accum_graphs 1
-
-# 3. Tune rollout parameters for the trained checkpoint
-torchrun --nproc_per_node=1 parameter_tuning.py
-```
-
 ## Configure Paths
 
 Edit path information in `pretraining/config.py` before running:
