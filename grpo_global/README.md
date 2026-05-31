@@ -20,7 +20,7 @@ Run supervised pretraining first. Each reference directory in `REFERENCE_DIRS` m
 
 ```text
 model_best.pth
-inference_config.json
+inference_config.json   ## from rollout parameter tuning
 ```
 
 `model_best.pth` initializes the policy and frozen reference model. `inference_config.json` provides the rollout parameters selected during validation tuning.
@@ -57,25 +57,6 @@ Multi-GPU:
 torchrun --nproc_per_node=4 train.py --model resnet18
 ```
 
-## Important Config Values
-
-Key GRPO parameters in `config.py`:
-
-```python
-"num_epochs": 9,
-"grad_accum": 8,
-"lr": 3e-5,
-"weight_decay": 1e-4,
-"grad_clip": 1.0,
-"kl_beta": 0.05,
-"K": 4,
-"buffer_radius": 0.01,
-"temperature": 1,
-"max_global_steps": 200,
-"seed_strategy": "gt_random",
-"seeds_per_graph": 1,
-```
-
 `train.py` reads rollout settings from `inference_config.json`:
 
 ```python
@@ -84,22 +65,6 @@ Key GRPO parameters in `config.py`:
 "stop_prob_thresh"
 "max_expand_per_node"
 ```
-
-## Implementation Note: `fp_lambda`
-
-In the current snapshot, `train.py` sets:
-
-```python
-CONFIG["fp_lambda"] = float(args.fp_lambda)
-```
-
-but the parser does not define `--fp_lambda`. Before running, either add:
-
-```python
-parser.add_argument("--fp_lambda", type=float, default=0.0)
-```
-
-to `train.py`, or set `CONFIG["fp_lambda"]` directly in `config.py` and remove that line from `train.py`.
 
 ## Outputs
 
