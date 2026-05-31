@@ -4,8 +4,6 @@ This folder trains **TraversRL-Global**, the RL fine-tuned version of TraversRL 
 
 Training starts from a supervised `TraversRL-Pre` checkpoint. For each training scene, the policy samples a group of rollouts, converts each rollout into a predicted pathway graph, scores each graph with buffered IoU, and converts the rollout rewards into group-relative advantages. The policy is then updated with an advantage-weighted log-likelihood objective plus KL regularization to the frozen supervised reference policy.
 
-Intuitively, positive advantages increase the likelihood of actions from above-average rollouts, while negative advantages decrease the likelihood of actions from below-average rollouts. The KL term prevents the policy from drifting too far from the supervised pretrained model.
-
 ## Files
 
 ```text
@@ -40,8 +38,10 @@ CONFIG["val_index"] = "/path/to/DATASET_ROOT/val.txt"
 CONFIG["save_path"] = "/path/to/save/grpo_logs/"
 
 REFERENCE_DIRS = {
-    "resnet18": "/path/to/reference_logs/resnet18_run/",
+    "resnet18": "/path/to/reference_logs/resnet18/",
 }
+
+## Make sure the selected model exists in REFERENCE_DIRS and that the corresponding reference folder contains both `model_best.pth` and `inference_config.json`.
 ```
 
 ## Run Training
