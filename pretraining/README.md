@@ -70,7 +70,7 @@ This script selects inference-time rollout parameters on validation scenes by ma
 
 ```python
 LOGS = ["/path/to/reference_logs/resnet18/"]
-VAL_PATH = "/path/to/val.txt"
+VAL_PATH = "/path/to/DATASET_ROOT/val.txt"
 RESTART_GRID = (1, 5)
 TOPK_GRID = (5, 10)
 STOP_PROB_GRID = (0.4, 0.5, 0.6, 0.7)

@@ -497,10 +497,8 @@ def tune_inference_hparams_ddp(
 
 
 
-LOGS = [
-    '/data/models/bin/2026_pathway_generation/reference_logs/resnet18_20260217_102812/',
-]
-VAL_PATH = "/data/aiclinic/pathways/generation_full_data/val.txt"
+LOGS = ['/path/to/reference_logs/resnet18/']
+VAL_PATH = '/path/to/DATASET_ROOT/val.txt'
 RESTART_GRID=(1, 5),
 TOPK_GRID=(5, 10),
 STOP_PROB_GRID=(0.4, 0.5, 0.6, 0.7),
