@@ -48,7 +48,7 @@ LOGS = [
     "GRPO_LOCAL_RUN_DIR/",
 ]
 
-MODELS = ["MODEL1", "MODEL2", "MODEL3"]
+MODELS = ["resnet18", "resnet18", "resnet18"]
 
 DATASETS = [
     {
@@ -124,7 +124,7 @@ Then run:
 python cache.py
 ```
 
-This creates a cache folder under `pred_root`, named using the projection and buffer settings from `metrics.py`, e.g., `_gt_cache_epsg:26910_1`.
+This creates a cache folder under `pred_root`, named using the projection and buffer settings from `metrics.py`, e.g., `_gt_cache_epsg:26910_1`. The cache stores precomputed ground-truth geometry and traversability objects for a fixed dataset split and buffer setting. This makes evaluation faster when repeatedly evaluating the same test set with different models or prediction folders.
 
 ## 4. Run Evaluation
 
@@ -155,16 +155,3 @@ The main metrics include:
 
 - **Buffered IoU**: geometric overlap between buffered predicted and ground-truth graphs.
 - **TravSim**: traversability similarity based on boundary-to-boundary connectivity within local tiles.
-
-Metric constants such as projection and buffer distance are defined in `metrics.py`:
-
-```python
-PROJ = "epsg:26910"
-BUFF_DIS = 1  # meters
-```
-
-## Notes
-
-- `inference.py`, `cache.py`, and `evaluation.py` contain small editable configuration lists near the bottom of each file. Update those paths before running.
-- The current scripts use placeholder paths such as `DATASET_ROOT/`, `RUN_DIR/`, and `PREDICTION_OUTPUT_ROOT/`. Replace them with your local dataset, checkpoint, and output locations.
-- For reproducibility, keep each run directory paired with the `inference_config.json` produced by the pretraining rollout-parameter tuning step.
