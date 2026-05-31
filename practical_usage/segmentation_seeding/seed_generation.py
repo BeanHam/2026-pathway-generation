@@ -25,22 +25,22 @@ if __name__ == '__main__':
     
     datasets = [
         {
-            "name":        "generation_full_data",
-            "data_root":   "/data/aiclinic/pathways/generation_full_data/pairs/",
+            "name": "generation_full_data",
+            "data_root": "/data/aiclinic/pathways/generation_full_data/pairs/",
             "index_file":  "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "output_json": "/data/aiclinic/pathways/generation_full_data/segmentation_seeds.json",
+            "output_json":  "/data/aiclinic/pathways/generation_full_data/segmentation_seeds.json",
         },
         {
-            "name":        "pathwaybench_seattle",
-            "data_root":   "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
+            "name": "pathwaybench_seattle",
+            "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
             "index_file":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "output_json": "/data/aiclinic/pathways/pathwaybench_seattle/segmentation_seeds.json",            
+            "output_json":  "/data/aiclinic/pathways/pathwaybench_seattle/segmentation_seeds.json",            
         },
         {
-            "name":        "pathwaybench_dc",
-            "data_root":   "/data/aiclinic/pathways/pathwaybench_dc/pairs/",
+            "name": "pathwaybench_dc",
+            "data_root": "/data/aiclinic/pathways/pathwaybench_dc/pairs/",
             "index_file":  "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
-            "output_json": "/data/aiclinic/pathways/pathwaybench_dc/segmentation_seeds.json",            
+            "output_json":  "/data/aiclinic/pathways/pathwaybench_dc/segmentation_seeds.json",            
         }
     ]
         
