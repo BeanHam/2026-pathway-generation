@@ -48,7 +48,7 @@ LOGS = [
     "GRPO_LOCAL_RUN_DIR/",
 ]
 
-MODELS = ["resnet18", "resnet18", "resnet18"]
+MODELS = ["MODEL1", "MODEL2", "MODEL3"]
 
 DATASETS = [
     {
@@ -110,13 +110,21 @@ DATASETS = [
 ]
 ```
 
+The cache uses the projection and buffer settings defined in metrics.py:
+
+```python
+PROJ = "epsg:26910"
+BUFF_DIS = 1  # in meters
+```
+`BUFF_DIS` controls the buffer distance used when converting pathway lines into buffered regions for geometry-based metrics such as IoU. The default value is 1 meter, matching the paper evaluation. You can adjust this value in metrics.py if you want to evaluate with a stricter or more relaxed buffer size. After changing BUFF_DIS, rebuild the cache so the cached ground-truth geometry matches the new buffer setting.
+
 Then run:
 
 ```bash
 python cache.py
 ```
 
-This creates a cache folder under `pred_root`, named using the projection and buffer settings from `metrics.py`.
+This creates a cache folder under `pred_root`, named using the projection and buffer settings from `metrics.py`, e.g., `_gt_cache_epsg:26910_1`.
 
 ## 4. Run Evaluation
 
@@ -147,7 +155,6 @@ The main metrics include:
 
 - **Buffered IoU**: geometric overlap between buffered predicted and ground-truth graphs.
 - **TravSim**: traversability similarity based on boundary-to-boundary connectivity within local tiles.
-- **Graph statistics**: average degree, average betweenness, number of connected components, and related measures.
 
 Metric constants such as projection and buffer distance are defined in `metrics.py`:
 
