@@ -1,13 +1,13 @@
 CONFIG = {
     # Path Information
-    'data_root':            '/data/aiclinic/pathways/generation_full_data/pairs/',
-    'train_index':          '/data/aiclinic/pathways/generation_full_data/train.txt',
-    'val_index':            '/data/aiclinic/pathways/generation_full_data/val.txt',
-    'test_index':            '/data/aiclinic/pathways/generation_full_data/test.txt',
-    'save_path':            '/data/models/bin/2026_pathway_generation/segmentation_logs/',
-
+    'data_root':              '/path/to/DATASET_ROOT/pairs/',
+    'train_index':            '/path/to/DATASET_ROOT/train.txt',
+    'val_index':              '/path/to/DATASET_ROOT/val.txt',
+    'test_index':             '/path/to/DATASET_ROOT/test.txt',
+    'save_path':              '/path/to/save/segmentation_logs/',
+    
     # Model Params
-    'model':                'swin_tiny',
+    'model':                'resnet18',
     'pretrained':           True,
     'decoder_dim':          96,
 

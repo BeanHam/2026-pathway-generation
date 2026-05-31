@@ -7,44 +7,32 @@ from config import CONFIG
 from model import PathwaySegmentationModel
 from utils import atomic_json_dump, PathwayInferenceDataset, select_seed_points
 
+DATASETS = [
+    {
+        "name":         "DATASET_NAME",
+        "data_root":    "/path/to/DATASET_ROOT/pairs/",
+        "index_file":   "/path/to/DATASET_ROOT/test.txt",
+        "output_json":  "/path/to/DATASET_ROOT/segmentation_seeds.json",
+    },
+]
+CHECKPOINT = '/path/to/save/segmentation_logs/resnet18/model_best.pth'
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--checkpoint', type=str, default = '/data/models/bin/2026_pathway_generation/segmentation_logs/swin_tiny_20260324_152911/model_best.pth')    
     parser.add_argument('--model', type=str, default=CONFIG['model'])
-    parser.add_argument('--threshold', type=float, default=0.5)
-    parser.add_argument('--k', type=int, default=200)
-    parser.add_argument('--min_distance', type=int, default=50)
+    parser.add_argument('--threshold', type=float, default=CONFIG['prob_threshold'])
+    parser.add_argument('--k', type=int, default=CONFIG['seed_top_k'])
+    parser.add_argument('--min_distance', type=int, default=CONFIG['seed_min_distance'])
     parser.add_argument('--save_prob_png_dir', type=str, default=None)
     args = parser.parse_args()
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = PathwaySegmentationModel(backbone_name=args.model,pretrained=False,decoder_dim=int(CONFIG['decoder_dim'])).to(device)
-    state = torch.load(args.checkpoint, map_location='cpu')
+    state = torch.load(CHECKPOINT, map_location='cpu')
     model.load_state_dict(state, strict=True)
     model.eval()
-    
-    datasets = [
-        {
-            "name": "generation_full_data",
-            "data_root": "/data/aiclinic/pathways/generation_full_data/pairs/",
-            "index_file":  "/data/aiclinic/pathways/generation_full_data/test.txt",
-            "output_json":  "/data/aiclinic/pathways/generation_full_data/segmentation_seeds.json",
-        },
-        {
-            "name": "pathwaybench_seattle",
-            "data_root": "/data/aiclinic/pathways/pathwaybench_seattle/pairs/",
-            "index_file":  "/data/aiclinic/pathways/pathwaybench_seattle/test.txt",
-            "output_json":  "/data/aiclinic/pathways/pathwaybench_seattle/segmentation_seeds.json",            
-        },
-        {
-            "name": "pathwaybench_dc",
-            "data_root": "/data/aiclinic/pathways/pathwaybench_dc/pairs/",
-            "index_file":  "/data/aiclinic/pathways/pathwaybench_dc/test.txt",
-            "output_json":  "/data/aiclinic/pathways/pathwaybench_dc/segmentation_seeds.json",            
-        }
-    ]
         
-    for d in datasets:
+    for d in DATASETS:
         
         print(f"Generating Seeds on {d['name']}...")
         
