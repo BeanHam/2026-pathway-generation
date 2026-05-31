@@ -29,7 +29,7 @@ inference_config.json
 
 ## Configure Paths
 
-Edit path information in `grpo_global/config.py` before training:
+Edit path information in `config.py` before training:
 
 ```python
 CONFIG["data_root"] = "/path/to/DATASET_ROOT/pairs/"
@@ -47,7 +47,7 @@ REFERENCE_DIRS = {
 
 ```bash
 cd grpo_global
-torchrun --nproc_per_node=1 train.py --model resnet18  ## single GPU
+torchrun --nproc_per_node=1 train.py --model resnet18     ## single GPU
 ## torchrun --nproc_per_node=4 train.py --model resnet18  ## multiple GPU
 ```
 
@@ -56,7 +56,7 @@ torchrun --nproc_per_node=1 train.py --model resnet18  ## single GPU
 Each run creates a timestamped directory under `CONFIG["save_path"]`, for example:
 
 ```text
-grpo_logs/
+grpo_global_logs/
 └── resnet18_YYYYMMDD_HHMMSS/
     ├── run_config.json
     ├── history.json

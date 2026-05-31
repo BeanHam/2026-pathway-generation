@@ -3,7 +3,7 @@ CONFIG = {
     'data_root':              '/path/to/DATASET_ROOT/pairs/',
     'train_index':            '/path/to/DATASET_ROOT/train.txt',
     'val_index':              '/path/to/DATASET_ROOT/val.txt',
-    'save_path':              '/path/to/save/grpo_local_logs/',
+    'save_path':              '/path/to/grpo_local_logs/',
     'seed':                   0,
             
     # Step-wise credit assignment
