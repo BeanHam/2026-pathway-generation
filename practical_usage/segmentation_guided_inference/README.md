@@ -91,14 +91,12 @@ infer_cfg["coverage_line_width"] = 2
 infer_cfg["min_generated_edges"] = 1
 infer_cfg["edge_round_decimals"] = 6
 infer_cfg["max_generations"] = 1000
-infer_cfg["save_iteration_geojsons"] = False
 ```
 
 - `coverage_buffer_radius_px`: pixel buffer used to decide whether seeds are already covered and whether a new generation overlaps an accepted path. The default `108` corresponds to roughly 4 meters in the original experiments.
 - `coverage_line_width`: rasterized line width for generated paths.
 - `min_generated_edges`: minimum number of edges required for a generation to be considered.
 - `max_generations`: maximum number of generation attempts per scene.
-- `save_iteration_geojsons`: if `True`, saves each accepted generation separately for debugging.
 
 Adjust `coverage_buffer_radius_px` if your image resolution or physical scale differs from the original data.
 
