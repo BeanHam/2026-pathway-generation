@@ -7,7 +7,7 @@ CONFIG = {
     'save_path':              '/path/to/save/segmentation_logs/',
     
     # Model Params
-    'model':                'resnet18',
+    'model':                'swin_tiny',
     'pretrained':           True,
     'decoder_dim':          96,
 

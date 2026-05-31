@@ -15,7 +15,7 @@ DATASETS = [
         "output_json":  "/path/to/DATASET_ROOT/segmentation_seeds.json",
     },
 ]
-CHECKPOINT = '/path/to/save/segmentation_logs/resnet18/model_best.pth'
+CHECKPOINT = '/path/to/save/segmentation_logs/swin_tiny/model_best.pth'
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
