@@ -56,7 +56,7 @@ torchrun --nproc_per_node=1 train.py --model resnet18     ## single GPU
 Each run creates a timestamped directory under `CONFIG["save_path"]`, for example:
 
 ```text
-grpo_global_logs/
+grpo_logs/
 └── resnet18_YYYYMMDD_HHMMSS/
     ├── run_config.json
     ├── history.json

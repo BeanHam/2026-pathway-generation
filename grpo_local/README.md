@@ -38,7 +38,7 @@ Edit path information in `config.py` before training:
 CONFIG["data_root"] = "/path/to/DATASET_ROOT/pairs/"
 CONFIG["train_index"] = "/path/to/DATASET_ROOT/train.txt"
 CONFIG["val_index"] = "/path/to/DATASET_ROOT/val.txt"
-CONFIG["save_path"] = "/path/to/grpo_global_logs/"
+CONFIG["save_path"] = "/path/to/grpo_local_logs/"
 
 ## example: a supervise-pretrained resnet18 reference model
 REFERENCE_DIRS = {
@@ -49,7 +49,7 @@ REFERENCE_DIRS = {
 ## Run Training
 
 ```bash
-cd grpo_global
+cd grpo_local
 torchrun --nproc_per_node=1 train.py --model resnet18     ## single GPU
 ## torchrun --nproc_per_node=4 train.py --model resnet18  ## multiple GPU
 ```
