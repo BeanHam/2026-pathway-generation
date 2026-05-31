@@ -1,8 +1,6 @@
 # TraversRL: Traversable Pedestrian Pathway Generation With Reinforcement Learning
 
-This repository contains research code for **TraversRL**, a vision-conditioned framework for generating connected pedestrian pathway graphs from overhead imagery.
-
-TraversRL treats pedestrian pathway extraction as an iterative graph-generation problem rather than a segmentation-only problem. Given an aerial image and a partial graph canvas, the model predicts direction-distance actions to grow a pedestrian network. The repository includes code for supervised pretraining, reinforcement-learning fine-tuning, practical segmentation-guided inference, and evaluation.
+This repository contains research code for **TraversRL**, a vision-conditioned framework for generating connected pedestrian pathway graphs from overhead imagery. TraversRL treats pedestrian pathway extraction as an iterative graph-generation problem rather than a segmentation-only problem. Given an aerial image and a partial graph canvas, the model predicts direction-distance actions to grow a pedestrian network. 
 
 <p align="center">
   <img src="teaser.png" alt="TraversRL teaser" width="100%">
@@ -33,16 +31,11 @@ Detailed instructions are provided in each folder:
 
 ## Environment Setup
 
-Create a fresh environment:
+Create a Python environment & install dependencies:
 
 ```bash
 conda create -n traversrl python=3.10 -y
 conda activate traversrl
-```
-
-Install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
@@ -102,7 +95,5 @@ The segmentation-guided inference code uses an iterative coverage procedure: it 
 Evaluation code is in `evaluation/`. It supports:
 
 - GeoJSON prediction export;
-- buffered IoU;
-- TravSim / traversability similarity;
-- graph statistics;
-- ground-truth caching for faster repeated evaluation over the same dataset split.
+- Buffered intersection-over-union (IoU) for geometric alignment;
+- TravSim for traversability/connectivity/routability;
