@@ -1,4 +1,4 @@
-# GRPO Global Reward Fine-Tuning (`grpo_global/`)
+# GRPO Global Reward Fine-Tuning
 
 This folder trains **TraversRL-Global**, the RL fine-tuned version of TraversRL that optimizes a terminal graph-level reward.
 
@@ -48,7 +48,7 @@ Single GPU:
 
 ```bash
 cd grpo_global
-python train.py --model resnet18 --device cuda:0
+torchrun --nproc_per_node=1 train.py --model resnet18
 ```
 
 Multi-GPU with DDP:

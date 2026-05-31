@@ -1,4 +1,4 @@
-# Segmentation-Guided Seeding (`segmentation_seeding/`)
+# Segmentation-Guided Seeding
 
 This folder trains a lightweight segmentation model and converts its probability maps into seed points for TraversRL inference. The goal is to remove the deployment-time dependence on ground-truth start nodes: the segmentation model proposes likely pathway locations, and TraversRL starts rollouts from those predicted seeds.
 
@@ -24,7 +24,6 @@ CONFIG = {
     "val_index": "/path/to/DATASET_ROOT/val.txt",
     "test_index": "/path/to/DATASET_ROOT/test.txt",
     "save_path": "/path/to/save/segmentation_logs/",
-    ...
 }
 ```
 
@@ -55,10 +54,6 @@ torchrun --nproc_per_node=1 train.py --model swin_tiny
 ## {swin_tiny, swin_small}
 ```
 
-The model takes RGB imagery and predicts a single-channel pathway logit map. Training masks are created by rasterizing the pathway graph with `mask_line_width` from `config.py`.
-
-## Outputs
-
 Training creates a timestamped folder under `CONFIG["save_path"]`, for example:
 
 ```text
@@ -74,33 +69,40 @@ segmentation_logs/
 
 ## Generate Segmentation-Derived Seeds
 
-After training, run:
+Before running seed generation, edit both `DATASETS` and `CHECKPOINT` directly in `seed_generation.py`:
 
-```bash
-python seed_generation.py \
-  --checkpoint /path/to/segmentation_logs/swin_tiny_run/model_best.pth \
-  --model swin_tiny \
-  --threshold 0.5 \
-  --k 200 \
-  --min_distance 50
+```python
+DATASETS = [
+    {
+        "name":        "DATASET_NAME",
+        "data_root":   "/path/to/DATASET_ROOT/pairs/",
+        "index_file":  "/path/to/DATASET_ROOT/test.txt",
+        "output_json": "/path/to/DATASET_ROOT/segmentation_seeds.json",
+    },
+]
+
+MODEL_NAME = "swin_tiny"
+CHECKPOINT = "/path/to/save/segmentation_logs/<model_name>/model_best.pth"
 ```
 
-The seed-generation script:
+Then run:
 
-1. predicts a pathway probability map for each scene;
-2. thresholds the map using `--threshold`;
-3. keeps up to `--k` high-confidence points;
-4. enforces `--min_distance` pixel spacing between seeds;
-5. writes normalized and pixel-coordinate seeds to JSON.
+```bash
+python seed_generation.py --threshold 0.5 --k 200 --min_distance 50
+```
 
-Before running, edit the `datasets` list inside `seed_generation.py` so that each `data_root`, `index_file`, and `output_json` points to your local datasets.
+The seed-generation parameters are:
 
-The output JSON has the form:
+- `--threshold`: minimum probability required for candidate pathway pixels;
+- `--k`: maximum number of seeds to keep per image;
+- `--min_distance`: minimum pixel spacing between selected seeds;
+
+The script saves a JSON file with pixel-space and normalized seed coordinates:
 
 ```json
 {
-  "<scene_id>": {
-    "points_px": [[x_px, y_px_top_left], ...],
+  "scene_id": {
+    "points_px": [[x_px, y_px], ...],
     "points_norm": [[x_norm, y_norm], ...],
     "scores": [score, ...]
   }

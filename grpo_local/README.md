@@ -1,4 +1,4 @@
-# GRPO Local Reward Fine-Tuning (`grpo_local/`)
+# GRPO Local Reward Fine-Tuning
 
 This folder trains **TraversRL-Local**, the local-reward version of TraversRL. It starts from a supervised `TraversRL-Pre` checkpoint and fine-tunes the policy with GRPO using:
 
@@ -51,7 +51,7 @@ Single GPU:
 
 ```bash
 cd grpo_global
-python train.py --model resnet18 --device cuda:0
+torchrun --nproc_per_node=1 train.py --model resnet18
 ```
 
 Multi-GPU with DDP:

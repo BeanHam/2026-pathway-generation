@@ -1,4 +1,4 @@
-# Supervised Pretraining (`pretraining/`)
+# Supervised Pretraining
 
 This folder trains **TraversRL-Pre**, the supervised graph-generation policy used as the reference model for later GRPO fine-tuning.
 

@@ -15,11 +15,12 @@ DATASETS = [
         "output_json":  "/path/to/DATASET_ROOT/segmentation_seeds.json",
     },
 ]
+
+MODEL_NAME = 'swin_tiny'
 CHECKPOINT = '/path/to/save/segmentation_logs/swin_tiny/model_best.pth'
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default=CONFIG['model'])
     parser.add_argument('--threshold', type=float, default=CONFIG['prob_threshold'])
     parser.add_argument('--k', type=int, default=CONFIG['seed_top_k'])
     parser.add_argument('--min_distance', type=int, default=CONFIG['seed_min_distance'])
@@ -27,7 +28,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = PathwaySegmentationModel(backbone_name=args.model,pretrained=False,decoder_dim=int(CONFIG['decoder_dim'])).to(device)
+    model = PathwaySegmentationModel(backbone_name=MODEL_NAME, pretrained=False, decoder_dim=int(CONFIG['decoder_dim'])).to(device)
     state = torch.load(CHECKPOINT, map_location='cpu')
     model.load_state_dict(state, strict=True)
     model.eval()
