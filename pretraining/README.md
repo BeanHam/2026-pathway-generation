@@ -57,11 +57,14 @@ reference_logs/
 
 ## Rollout-Parameter Tuning
 
-After supervised training, we select inference-time rollout parameters on validation scenes by maximizing buffered IoU. Edit the validation path, checkpoint list, and parameter values inside `parameter_tuning.py`:
+After supervised training, we select inference-time rollout parameters on validation scenes by maximizing buffered IoU. Edit the validation path, checkpoint list, and parameter grids inside `parameter_tuning.py`:
 
 ```python
+## path info
 LOGS = ["/path/to/reference_logs/resnet18/"]
 VAL_PATH = "/path/to/DATASET_ROOT/val.txt"
+
+## parameter grids
 RESTART_GRID = (1, 5)
 TOPK_GRID = (5, 10)
 STOP_PROB_GRID = (0.4, 0.5, 0.6, 0.7)
@@ -77,27 +80,13 @@ Parameter meanings:
 - `STOP_PROB_GRID`: candidate values for `stop_prob_thresh`. `Stop` is accepted only when its probability is at least this threshold. Higher values make the model less likely to stop early; lower values make shorter rollouts more likely.
 - `MAX_EXPAND_GRID`: candidate values for `max_expand_per_node`. This limits how many outgoing actions can be generated from one node. Larger values allow more branching but can add noisy edges.
 
-Additional fixed tuning arguments inside the script include:
-
-- `seed_strategy="gt_random"`: sample the start node from the ground-truth graph during validation tuning.
-- `seeds_per_graph=1`: number of initial seeds per rollout.
-- `buffer_radius=0.01`: normalized buffer radius used for validation IoU.
-- `max_graphs=200`: maximum number of validation graphs used during tuning. Lower this for faster tuning or set it to `None` to use all validation graphs.
-- `rng_seed=0`: random seed for deterministic start-node and subset sampling.
-
 Then run:
 
 ```bash
 python parameter_tuning.py
 ```
 
-The script writes:
-
-```text
-inference_config.json
-```
-
-into the corresponding supervised run folder.
+The script writes `inference_config.json` into the corresponding supervised run folder.
 
 
 ## Typical Pretraining Flow
